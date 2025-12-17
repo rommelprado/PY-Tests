@@ -198,15 +198,17 @@ def calcular_pmt_mensal(principal, taxa_mensal_pct, meses):
 def convert_df(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- INTERFACE LATERAL ---
+# --- INTERFACE LATERAL (CORRIGIDA) ---
 st.sidebar.header("1. Contrato")
-valor_emprestimo = st.sidebar.number_input("Valor Empréstimo (R$)", 50000.0)
-prazo_meses = st.sidebar.number_input("Prazo (meses)", 48)
+
+# CORREÇÃO: min_value=0.0 e value=50000.0 para liberar edição
+valor_emprestimo = st.sidebar.number_input("Valor Empréstimo (R$)", min_value=0.0, value=50000.0, step=100.0)
+prazo_meses = st.sidebar.number_input("Prazo (meses)", min_value=1, value=48, step=1)
 data_inicio = st.sidebar.date_input("Início Contrato", date(2022, 1, 15), format="DD/MM/YYYY")
-valor_parcela_real = st.sidebar.number_input("Parcela Cobrada (R$)", 1800.0)
+valor_parcela_real = st.sidebar.number_input("Parcela Cobrada (R$)", min_value=0.0, value=1800.0, step=10.0, format="%.2f")
 
 st.sidebar.header("2. Decisão Judicial")
-taxa_judicial_mensal = st.sidebar.number_input("Nova Taxa Juros (Mensal %)", 1.5, format="%.2f")
+taxa_judicial_mensal = st.sidebar.number_input("Nova Taxa Juros (Mensal %)", min_value=0.0, value=1.5, step=0.1, format="%.2f")
 data_citacao = st.sidebar.date_input("Data Citação", date(2023, 6, 1), format="DD/MM/YYYY")
 data_calculo = st.sidebar.date_input("Data Base Cálculo", date.today(), format="DD/MM/YYYY")
 
