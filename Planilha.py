@@ -163,24 +163,19 @@ def calcular_fator_tjmg_parcial(data_venc, data_corte_limite):
     p_venc = pd.to_datetime(data_venc).to_period('M')
     p_corte = pd.to_datetime(data_corte_limite).to_period('M')
     
-    # Se vencimento é posterior ao corte, não aplica TJMG
     if p_venc > p_corte:
         return 1.0
         
-    # Busca Fator na data de Corte (Agosto/24 ou anterior)
     linha_corte = df_tjmg[df_tjmg['periodo'] == p_corte]
     if linha_corte.empty:
-        # Pega o mais próximo se a tabela acabar antes
         fator_fim = df_tjmg['Fator_Acumulado'].iloc[-1]
     else:
         fator_fim = linha_corte['Fator_Acumulado'].iloc[0]
         
-    # Busca Fator Inicial (Mês anterior ao vencimento)
     p_anterior = p_venc - 1
     linha_inicial = df_tjmg[df_tjmg['periodo'] == p_anterior]
     
     if linha_inicial.empty:
-        # Lógica de fallback
         linha_venc = df_tjmg[df_tjmg['periodo'] == p_venc]
         if not linha_venc.empty:
             fator_venc = linha_venc['Fator_Acumulado'].iloc[0]
@@ -215,28 +210,36 @@ taxa_judicial_mensal = st.sidebar.number_input("Nova Taxa Juros (Mensal %)", 1.5
 data_citacao = st.sidebar.date_input("Data Citação", date(2023, 6, 1), format="DD/MM/YYYY")
 data_calculo = st.sidebar.date_input("Data Base Cálculo", date.today(), format="DD/MM/YYYY")
 
-# Data de Corte da Nova Lei
 DATA_CORTE = date(2024, 8, 30)
 
 st.sidebar.markdown("---")
 
-# --- ABA DE ÍNDICES NOVOS (EDITÁVEL) ---
+# --- ABA DE ÍNDICES NOVOS (IPCA + SELIC) ---
 st.subheader("Configuração dos Índices Pós-Lei (Set/24 em diante)")
-st.info("Abaixo estão os índices de IPCA e Selic Mensal a partir de 09/2024. Você pode editar ou adicionar meses futuros.")
+st.info("Valores Oficiais carregados até Nov/2025 (IPCA fornecido + Selic Mensal Banco Central).")
 
-# Dados iniciais conhecidos (Set/Out/Nov 2024)
+# DADOS CARREGADOS (IPCA DO USUÁRIO + SELIC MENSAL DO PERÍODO)
 dados_novos_init = [
-    {"Mes": "2024-09-01", "IPCA (%)": 0.44, "Selic Meta (%)": 0.84},
-    {"Mes": "2024-10-01", "IPCA (%)": 0.56, "Selic Meta (%)": 0.93},
-    {"Mes": "2024-11-01", "IPCA (%)": 0.39, "Selic Meta (%)": 0.79},
-    {"Mes": "2024-12-01", "IPCA (%)": 0.00, "Selic Meta (%)": 0.00},
-    {"Mes": "2025-01-01", "IPCA (%)": 0.00, "Selic Meta (%)": 0.00},
+    {"Mes": date(2024, 9, 1),  "IPCA (%)": 0.44, "Selic Meta (%)": 0.84},
+    {"Mes": date(2024, 10, 1), "IPCA (%)": 0.56, "Selic Meta (%)": 0.93},
+    {"Mes": date(2024, 11, 1), "IPCA (%)": 0.39, "Selic Meta (%)": 0.79},
+    {"Mes": date(2024, 12, 1), "IPCA (%)": 0.52, "Selic Meta (%)": 0.93},
+    {"Mes": date(2025, 1, 1),  "IPCA (%)": 0.16, "Selic Meta (%)": 1.01},
+    {"Mes": date(2025, 2, 1),  "IPCA (%)": 1.31, "Selic Meta (%)": 0.99},
+    {"Mes": date(2025, 3, 1),  "IPCA (%)": 0.56, "Selic Meta (%)": 0.96},
+    {"Mes": date(2025, 4, 1),  "IPCA (%)": 0.43, "Selic Meta (%)": 1.06},
+    {"Mes": date(2025, 5, 1),  "IPCA (%)": 0.26, "Selic Meta (%)": 1.14},
+    {"Mes": date(2025, 6, 1),  "IPCA (%)": 0.24, "Selic Meta (%)": 1.10},
+    {"Mes": date(2025, 7, 1),  "IPCA (%)": 0.26, "Selic Meta (%)": 1.28},
+    {"Mes": date(2025, 8, 1),  "IPCA (%)": -0.11,"Selic Meta (%)": 1.16},
+    {"Mes": date(2025, 9, 1),  "IPCA (%)": 0.48, "Selic Meta (%)": 1.22},
+    {"Mes": date(2025, 10, 1), "IPCA (%)": 0.09, "Selic Meta (%)": 1.28},
+    {"Mes": date(2025, 11, 1), "IPCA (%)": 0.18, "Selic Meta (%)": 1.05},
 ]
 
-# --- CORREÇÃO DO ERRO ---
-# Convertemos a coluna 'Mes' para o tipo Data ANTES de passar para o editor
+# Conversão para DataFrame com tipo de data correto
 df_init = pd.DataFrame(dados_novos_init)
-df_init['Mes'] = pd.to_datetime(df_init['Mes']).dt.date
+df_init["Mes"] = pd.to_datetime(df_init["Mes"])
 
 df_novos_indices_input = st.data_editor(
     df_init, 
@@ -244,13 +247,12 @@ df_novos_indices_input = st.data_editor(
     column_config={
         "Mes": st.column_config.DateColumn("Mês Ref.", format="MM/YYYY", step=1),
         "IPCA (%)": st.column_config.NumberColumn(format="%.2f%%"),
-        "Selic Meta (%)": st.column_config.NumberColumn(format="%.2f%%")
+        "Selic Meta (%)": st.column_config.NumberColumn(format="%.2f%%", help="Taxa Selic Mensal Efetiva")
     },
     use_container_width=True
 )
 
-# Processar tabela nova (Garantir que seja Timestamp para cálculos)
-df_novos_indices_input['Mes'] = pd.to_datetime(df_novos_indices_input['Mes'])
+# Converter para Periodo para facilitar busca
 df_novos_indices_input['periodo'] = df_novos_indices_input['Mes'].dt.to_period('M')
 
 # --- LÓGICA DE CÁLCULO MISTA ---
@@ -273,7 +275,7 @@ def calcular_fator_ipca_pos(data_inicio_novo, data_fim_calculo):
 
 def calcular_juros_lei_nova(valor_corrigido_ipca, data_inicio_novo, data_fim_calculo):
     """
-    Calcula juros (Selic - IPCA) acumulados mês a mês.
+    Calcula juros (Selic - IPCA) acumulados.
     """
     if data_inicio_novo > data_fim_calculo: return 0.0
     
@@ -324,29 +326,26 @@ if st.button("Calcular Revisional (Híbrido)"):
             inicio_juros_antigo = max(vencimento, data_citacao)
             
             if inicio_juros_antigo < DATA_CORTE:
-                # Contagem de meses (pro rata dias / 30)
                 dias_antigos = (DATA_CORTE - inicio_juros_antigo).days
                 juros_antigo_val = valor_em_agosto * (dias_antigos / 30) * 0.01
             else:
                 juros_antigo_val = 0.0
                 
-            # Saldo em 30/08 (Sem capitalizar juros)
+            # Saldo em 30/08
             saldo_principal_agosto = valor_em_agosto
             saldo_juros_agosto = juros_antigo_val
             
             # --- ETAPA 2: DE 01/09/2024 ATÉ HOJE ---
             if data_calculo > DATA_CORTE:
-                # Correção IPCA sobre o Principal de Agosto
+                # Correção IPCA (Setembro em diante)
                 fator_ipca = calcular_fator_ipca_pos(date(2024, 9, 1), data_calculo)
                 valor_final_principal = saldo_principal_agosto * fator_ipca
                 
-                # Juros Nova Lei sobre o Principal Atualizado IPCA
+                # Juros Nova Lei (Sobre principal atualizado)
                 juros_novos_val = calcular_juros_lei_nova(valor_final_principal, date(2024, 9, 1), data_calculo)
                 
-                # Total Juros = Juros Antigos (nominais) + Juros Novos
                 total_juros_linha = saldo_juros_agosto + juros_novos_val
             else:
-                # Cálculo parou antes da lei nova
                 valor_final_principal = saldo_principal_agosto
                 total_juros_linha = saldo_juros_agosto
                 fator_ipca = 1.0
@@ -354,14 +353,14 @@ if st.button("Calcular Revisional (Híbrido)"):
             memoria = f"TJMG até 08/24 ({fator_tjmg:.4f}) + IPCA pós"
 
         else:
-            # --- PARCELA VENCEU JÁ NA VIGÊNCIA DA LEI NOVA (PÓS SET/24) ---
+            # --- PARCELA PÓS-LEI ---
             fator_tjmg = 1.0
             
-            # Correção IPCA do Vencimento até Hoje
+            # Correção IPCA total
             fator_ipca = calcular_fator_ipca_pos(vencimento, data_calculo)
             valor_final_principal = diferenca_base * fator_ipca
             
-            # Juros Nova Lei (Citação ou Vencimento)
+            # Juros Nova Lei
             inicio_juros = max(vencimento, data_citacao)
             if inicio_juros < data_calculo:
                 juros_novos_val = calcular_juros_lei_nova(valor_final_principal, inicio_juros, data_calculo)
