@@ -233,18 +233,23 @@ dados_novos_init = [
     {"Mes": "2025-01-01", "IPCA (%)": 0.00, "Selic Meta (%)": 0.00},
 ]
 
+# --- CORREÇÃO DO ERRO ---
+# Convertemos a coluna 'Mes' para o tipo Data ANTES de passar para o editor
+df_init = pd.DataFrame(dados_novos_init)
+df_init['Mes'] = pd.to_datetime(df_init['Mes']).dt.date
+
 df_novos_indices_input = st.data_editor(
-    pd.DataFrame(dados_novos_init), 
+    df_init, 
     num_rows="dynamic",
     column_config={
-        "Mes": st.column_config.DateColumn("Mês Ref.", format="MM/YYYY"),
+        "Mes": st.column_config.DateColumn("Mês Ref.", format="MM/YYYY", step=1),
         "IPCA (%)": st.column_config.NumberColumn(format="%.2f%%"),
         "Selic Meta (%)": st.column_config.NumberColumn(format="%.2f%%")
     },
     use_container_width=True
 )
 
-# Processar tabela nova
+# Processar tabela nova (Garantir que seja Timestamp para cálculos)
 df_novos_indices_input['Mes'] = pd.to_datetime(df_novos_indices_input['Mes'])
 df_novos_indices_input['periodo'] = df_novos_indices_input['Mes'].dt.to_period('M')
 
@@ -269,9 +274,6 @@ def calcular_fator_ipca_pos(data_inicio_novo, data_fim_calculo):
 def calcular_juros_lei_nova(valor_corrigido_ipca, data_inicio_novo, data_fim_calculo):
     """
     Calcula juros (Selic - IPCA) acumulados mês a mês.
-    Aplica-se sobre o valor atualizado mês a mês (mas aqui simplificaremos
-    somando as taxas mensais ao saldo já corrigido, prática comum).
-    Lei: Juro = Selic - IPCA. Se der negativo, juro é zero.
     """
     if data_inicio_novo > data_fim_calculo: return 0.0
     
@@ -285,15 +287,12 @@ def calcular_juros_lei_nova(valor_corrigido_ipca, data_inicio_novo, data_fim_cal
     
     juros_acumulados = 0.0
     
-    # OBS: O cálculo exato seria aplicar a taxa composta dia a dia ou mês a mês.
-    # Em juízo, simplifica-se somando as taxas mensais efetivas de juros reais.
     for idx, row in df_filtrado.iterrows():
         selic = row['Selic Meta (%)']
         ipca = row['IPCA (%)']
         juro_real = max(0, selic - ipca)
         juros_acumulados += juro_real
         
-    # Retorna valor monetário aproximado (Taxa Acumulada * Valor Atualizado)
     return valor_corrigido_ipca * (juros_acumulados / 100)
 
 
@@ -331,7 +330,7 @@ if st.button("Calcular Revisional (Híbrido)"):
             else:
                 juros_antigo_val = 0.0
                 
-            # Saldo em 30/08 (Sem capitalizar juros, carregamos separados)
+            # Saldo em 30/08 (Sem capitalizar juros)
             saldo_principal_agosto = valor_em_agosto
             saldo_juros_agosto = juros_antigo_val
             
@@ -342,7 +341,6 @@ if st.button("Calcular Revisional (Híbrido)"):
                 valor_final_principal = saldo_principal_agosto * fator_ipca
                 
                 # Juros Nova Lei sobre o Principal Atualizado IPCA
-                # Data inicio juros novos: 01/09/2024
                 juros_novos_val = calcular_juros_lei_nova(valor_final_principal, date(2024, 9, 1), data_calculo)
                 
                 # Total Juros = Juros Antigos (nominais) + Juros Novos
@@ -357,7 +355,6 @@ if st.button("Calcular Revisional (Híbrido)"):
 
         else:
             # --- PARCELA VENCEU JÁ NA VIGÊNCIA DA LEI NOVA (PÓS SET/24) ---
-            # Não tem TJMG nem 1%. Só IPCA e Selic-IPCA
             fator_tjmg = 1.0
             
             # Correção IPCA do Vencimento até Hoje
