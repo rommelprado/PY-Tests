@@ -462,7 +462,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             csv = convert_df(df_res)
             st.download_button("💾 Baixar Tabela (Excel/CSV)", csv, "calculo_judicial.csv", "text/csv", use_container_width=True)
             
-      with col_btn2:
+        with col_btn2:
             html_botao = """
             <script>
             function imprimir() { window.parent.print(); }
