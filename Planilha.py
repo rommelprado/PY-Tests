@@ -119,7 +119,7 @@ CSV_TJMG = """Data,Indice
 """
 
 # Configuração da Página
-st.set_page_config(page_title="Calculadora Revisional Híbrida (Lei 14.905)", layout="wide")
+st.set_page_config(page_title="Calculadora Revisional Híbrida", layout="wide")
 
 # CSS Impressão e Estilos Gerais
 st.markdown("""
@@ -133,12 +133,6 @@ st.markdown("""
     table { font-size: 10px !important; page-break-inside: auto; }
     tr { page-break-inside: avoid; page-break-after: auto; }
 }
-.btn-imprimir {
-    background-color: #2e7d32; color: white; border: none; padding: 0.5rem 1rem;
-    font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold;
-    text-align: center; text-decoration: none; display: inline-block; width: 100%; margin-top: 10px;
-}
-.btn-imprimir:hover { background-color: #1b5e20; }
 .info-cabecalho {
     background-color: #f8f9fa; border-left: 4px solid #1f77b4; padding: 15px; border-radius: 5px; margin-bottom: 20px;
 }
@@ -146,7 +140,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("⚖️ Relatório de Cálculo Revisional")
-st.markdown("**Regra:** TJMG + 1% até 30/08/2024 | IPCA + (Selic - IPCA) após 01/09/2024 (Lei 14.905/24)")
+st.markdown("**Regra:** TJMG + 1% a.m. até 30/08/2024 | IPCA + (Selic - IPCA) após 01/09/2024 (Lei 14.905/24)")
 st.markdown("---")
 
 # --- PROCESSAMENTO DOS DADOS ANTIGOS ---
@@ -194,10 +188,19 @@ def calcular_fator_tjmg_parcial(data_venc, data_corte_limite):
         
     return fator_fim / fator_inicio
 
-def calcular_pmt_mensal(principal, taxa_mensal_pct, meses):
+# --- FUNÇÕES FINANCEIRAS BÁSICAS ---
+def calcular_pmt_mensal(principal, taxa_mensal_pct, meses, antecipada=False):
     taxa = taxa_mensal_pct / 100
     if taxa == 0: return principal / meses
-    return principal * (taxa * (1 + taxa)**meses) / ((1 + taxa)**meses - 1)
+    
+    # Cálculo da Price Padrão (Postecipada)
+    pmt = principal * (taxa * (1 + taxa)**meses) / ((1 + taxa)**meses - 1)
+    
+    # Ajuste para Price com Entrada (Antecipada)
+    if antecipada:
+        pmt = pmt / (1 + taxa)
+        
+    return pmt
 
 @st.cache_data
 def convert_df(df):
@@ -211,6 +214,10 @@ st.sidebar.header("1. Contrato")
 valor_emprestimo = st.sidebar.number_input("Valor Empréstimo (R$)", min_value=0.0, value=3921.41, step=100.0)
 prazo_meses = st.sidebar.number_input("Prazo (meses)", min_value=1, value=45, step=1)
 taxa_contrato_mensal = st.sidebar.number_input("Taxa Contrato (Mensal %)", min_value=0.0, value=5.99, step=0.1, format="%.2f")
+
+# Checkbox para identificar se a parcela 1 foi paga no ato
+pagamento_antecipado = st.sidebar.checkbox("1ª Parcela paga no ato (Entrada / Antecipada)", value=True)
+
 data_inicio = st.sidebar.date_input("Início Contrato (Venc. 1ª Parcela)", date(2020, 7, 16), format="DD/MM/YYYY")
 valor_parcela_real = st.sidebar.number_input("Parcela Cobrada (R$)", min_value=0.0, value=243.94, step=10.0, format="%.2f")
 
@@ -303,9 +310,9 @@ def calcular_juros_lei_nova(valor_corrigido_ipca, data_inicio_novo, data_fim_cal
     return valor_corrigido_ipca * (juros_acumulados / 100), juros_acumulados, meses_contados
 
 
+# --- PROCESSAMENTO PRINCIPAL ---
 if st.sidebar.button("Calcular Execução", type="primary"):
     
-    # --- CABEÇALHO DO RELATÓRIO (PARÂMETROS DA EXECUÇÃO) ---
     st.markdown("### 📄 Parâmetros da Liquidação")
     
     if nome_cliente:
@@ -320,11 +327,10 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     </div>
     """, unsafe_allow_html=True)
         
-    parcela_revisada = calcular_pmt_mensal(valor_emprestimo, taxa_judicial_mensal, prazo_meses)
+    parcela_revisada = calcular_pmt_mensal(valor_emprestimo, taxa_judicial_mensal, prazo_meses, antecipada=pagamento_antecipado)
     diferenca_base = valor_parcela_real - parcela_revisada
     
     colA, colB, colC = st.columns(3)
-    # Aqui inserimos as taxas nos títulos como solicitado
     colA.metric(f"Parcela do Contrato ({taxa_contrato_mensal:.2f}% a.m.)", f"R$ {valor_parcela_real:,.2f}")
     colB.metric(f"Parcela Judicial ({taxa_judicial_mensal:.2f}% a.m.)", f"R$ {parcela_revisada:,.2f}")
     colC.metric("Indébito Mensal (Diferença)", f"R$ {diferenca_base:,.2f}")
@@ -340,12 +346,17 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         
         if vencimento > data_calculo: break
 
+        # Dias totais da CM
+        dias_cm = (data_calculo - vencimento).days
+        info_tempo_cm = f"{dias_cm}d" if dias_cm > 0 else "0d"
+
         # --- EXCLUSÃO SUTIL DE PARCELAS (ZERADAS) ---
         if i in parcelas_excluidas:
             dados.append({
                 "Nº": i,
                 "Vencimento": vencimento.strftime("%d/%m/%Y"),
                 "Original": 0.00,
+                "Tempo CM (Dias)": "-",
                 "Fator TJMG": "-",
                 "Fator IPCA": "-",
                 "Principal Atualizado": 0.00,
@@ -424,6 +435,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             "Nº": i,
             "Vencimento": vencimento.strftime("%d/%m/%Y"),
             "Original": diferenca_base,
+            "Tempo CM (Dias)": info_tempo_cm,
             "Fator TJMG": str_fator_tjmg,
             "Fator IPCA": str_fator_ipca,
             "Principal Atualizado": valor_final_principal,
