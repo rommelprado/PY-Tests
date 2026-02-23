@@ -448,15 +448,27 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             st.download_button("💾 Baixar Tabela (Excel/CSV)", csv, "calculo_judicial.csv", "text/csv", use_container_width=True)
             
         with col_btn2:
+            # Botão de impressão isolado via iframe comunicando com a janela principal
             html_botao = """
             <script>
-            function imprimir() { window.parent.print(); }
+            function imprimir() {
+                window.parent.print();
+            }
             </script>
             <style>
             .btn-imprimir {
-                background-color: #2e7d32; color: white; border: none; padding: 0.5rem 1rem;
-                font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold;
-                text-align: center; width: 100%; font-family: 'Source Sans Pro', sans-serif; margin-top: 15px;
+                background-color: #2e7d32;
+                color: white;
+                border: none;
+                padding: 0.5rem 1rem;
+                font-size: 16px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: bold;
+                text-align: center;
+                width: 100%;
+                font-family: 'Source Sans Pro', sans-serif;
+                margin-top: 15px;
             }
             .btn-imprimir:hover { background-color: #1b5e20; }
             </style>
