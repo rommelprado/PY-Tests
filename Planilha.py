@@ -139,6 +139,9 @@ st.markdown("""
     text-align: center; text-decoration: none; display: inline-block; width: 100%; margin-top: 10px;
 }
 .btn-imprimir:hover { background-color: #1b5e20; }
+.info-cabecalho {
+    background-color: #f8f9fa; border-left: 4px solid #1f77b4; padding: 15px; border-radius: 5px; margin-bottom: 20px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -207,6 +210,7 @@ nome_cliente = st.sidebar.text_input("Nome do Cliente", value="")
 st.sidebar.header("1. Contrato")
 valor_emprestimo = st.sidebar.number_input("Valor Empréstimo (R$)", min_value=0.0, value=3921.41, step=100.0)
 prazo_meses = st.sidebar.number_input("Prazo (meses)", min_value=1, value=45, step=1)
+taxa_contrato_mensal = st.sidebar.number_input("Taxa Contrato (Mensal %)", min_value=0.0, value=5.99, step=0.1, format="%.2f")
 data_inicio = st.sidebar.date_input("Início Contrato (Venc. 1ª Parcela)", date(2020, 7, 16), format="DD/MM/YYYY")
 valor_parcela_real = st.sidebar.number_input("Parcela Cobrada (R$)", min_value=0.0, value=243.94, step=10.0, format="%.2f")
 
@@ -281,7 +285,6 @@ def calcular_fator_ipca_pos(data_inicio_novo, data_fim_calculo):
     return fator
 
 def calcular_juros_lei_nova(valor_corrigido_ipca, data_inicio_novo, data_fim_calculo):
-    """Retorna os juros em R$, a taxa acumulada e a contagem de meses"""
     if data_inicio_novo > data_fim_calculo: return 0.0, 0.0, 0
     p_ini = pd.to_datetime(data_inicio_novo).to_period('M')
     p_fim = pd.to_datetime(data_fim_calculo).to_period('M')
@@ -302,15 +305,28 @@ def calcular_juros_lei_nova(valor_corrigido_ipca, data_inicio_novo, data_fim_cal
 
 if st.sidebar.button("Calcular Execução", type="primary"):
     
+    # --- CABEÇALHO DO RELATÓRIO (PARÂMETROS DA EXECUÇÃO) ---
+    st.markdown("### 📄 Parâmetros da Liquidação")
+    
     if nome_cliente:
-        st.subheader(f"Cliente: {nome_cliente}")
+        st.write(f"**Cliente:** {nome_cliente}")
+        
+    st.markdown(f"""
+    <div class="info-cabecalho">
+        <strong>Valor Financiado:</strong> R$ {valor_emprestimo:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <strong>Prazo do Contrato:</strong> {prazo_meses} meses &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <strong>Data da Citação:</strong> {data_citacao.strftime('%d/%m/%Y')} &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <strong>Atualizado até:</strong> {data_calculo.strftime('%d/%m/%Y')}
+    </div>
+    """, unsafe_allow_html=True)
         
     parcela_revisada = calcular_pmt_mensal(valor_emprestimo, taxa_judicial_mensal, prazo_meses)
     diferenca_base = valor_parcela_real - parcela_revisada
     
     colA, colB, colC = st.columns(3)
-    colA.metric("Parcela do Contrato", f"R$ {valor_parcela_real:,.2f}")
-    colB.metric("Parcela Judicial (Devida)", f"R$ {parcela_revisada:,.2f}")
+    # Aqui inserimos as taxas nos títulos como solicitado
+    colA.metric(f"Parcela do Contrato ({taxa_contrato_mensal:.2f}% a.m.)", f"R$ {valor_parcela_real:,.2f}")
+    colB.metric(f"Parcela Judicial ({taxa_judicial_mensal:.2f}% a.m.)", f"R$ {parcela_revisada:,.2f}")
     colC.metric("Indébito Mensal (Diferença)", f"R$ {diferenca_base:,.2f}")
     
     st.divider()
@@ -341,7 +357,6 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             })
             continue 
             
-        # Variáveis zeradas para iniciar
         dias_tjmg = 0
         dias_ipca = 0
         
@@ -358,19 +373,18 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             fator_tjmg = calcular_fator_tjmg_parcial(vencimento, DATA_CORTE)
             valor_em_agosto = diferenca_base * fator_tjmg
             
-            # Divisão dos dias de Correção Monetária
             if data_calculo <= DATA_CORTE:
                 dias_tjmg = (data_calculo - vencimento).days
                 dias_ipca = 0
             else:
                 dias_tjmg = (DATA_CORTE - vencimento).days
-                dias_ipca = (data_calculo - DATA_CORTE).days # Contagem contínua para não perder dias
+                dias_ipca = (data_calculo - DATA_CORTE).days 
             
             inicio_juros_antigo = max(vencimento, data_citacao)
             
             if inicio_juros_antigo < DATA_CORTE:
                 dias_antigos = (DATA_CORTE - inicio_juros_antigo).days
-                taxa_antiga_pct = (dias_antigos / 30) * 1.0 # 1% ao mês
+                taxa_antiga_pct = (dias_antigos / 30) * 1.0 
                 juros_antigo_val = valor_em_agosto * (taxa_antiga_pct / 100)
                 
             saldo_principal_agosto = valor_em_agosto
@@ -400,14 +414,12 @@ if st.sidebar.button("Calcular Execução", type="primary"):
 
         total_linha = valor_final_principal + juros_antigo_val + juros_novos_val
         
-        # Formatação Visual Elegante (Mesclando Fator Numérico com Dias em texto)
         str_fator_tjmg = f"{fator_tjmg:.4f} ({dias_tjmg}d)" if dias_tjmg > 0 else "-"
         str_fator_ipca = f"{fator_ipca:.4f} ({dias_ipca}d)" if dias_ipca > 0 else "-"
         
         info_mora_1 = f"{taxa_antiga_pct:.2f}% ({dias_antigos}d)" if dias_antigos > 0 else "-"
         info_mora_selic = f"{taxa_nova_pct:.2f}% ({meses_novos}m)" if meses_novos > 0 else "-"
 
-        # Adiciona a linha detalhada na tabela
         dados.append({
             "Nº": i,
             "Vencimento": vencimento.strftime("%d/%m/%Y"),
@@ -433,7 +445,6 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     if not df_res.empty:
         st.markdown("### Memória de Cálculo Parcelada")
         
-        # O Fator TJMG e IPCA não estão mais no .format() porque agora são strings com os dias embutidos
         st.table(df_res.style.format({
             "Original": "R$ {:.2f}",
             "Principal Atualizado": "R$ {:.2f}",
