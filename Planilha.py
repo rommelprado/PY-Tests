@@ -420,12 +420,13 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     
     if not df_res.empty:
         st.markdown("### Memória de Cálculo Parcelada")
-        st.dataframe(df_res.style.format({
+        # st.table cria uma tabela estática e contínua, perfeita para impressão em múltiplas páginas
+        st.table(df_res.style.format({
             "Original": "R$ {:.2f}",
             "Principal Atualizado": "R$ {:.2f}",
             "Total Juros": "R$ {:.2f}",
             "Total Devido": "R$ {:.2f}"
-        }), use_container_width=True)
+        }))
         
         st.divider()
         st.markdown("### 🏛️ Resumo da Condenação a Executar")
