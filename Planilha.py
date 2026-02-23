@@ -237,6 +237,8 @@ dados_novos_init = [
     {"Mes": date(2025, 9, 1),  "IPCA (%)": 0.48, "Selic Meta (%)": 1.22},
     {"Mes": date(2025, 10, 1), "IPCA (%)": 0.09, "Selic Meta (%)": 1.28},
     {"Mes": date(2025, 11, 1), "IPCA (%)": 0.18, "Selic Meta (%)": 1.05},
+    {"Mes": date(2025, 12, 1), "IPCA (%)": 0.33, "Selic Meta (%)": 1.22},
+    {"Mes": date(2026, 01, 1), "IPCA (%)": 0.33, "Selic Meta (%)": 1.16},
 ]
 
 # Conversão para DataFrame com tipo de data correto
