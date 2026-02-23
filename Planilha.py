@@ -198,19 +198,28 @@ def calcular_pmt_mensal(principal, taxa_mensal_pct, meses):
 def convert_df(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# --- INTERFACE LATERAL (CORRIGIDA) ---
+# --- INTERFACE LATERAL ---
 st.sidebar.header("1. Contrato")
-
-# CORREÇÃO: min_value=0.0 e value=50000.0 para liberar edição
-valor_emprestimo = st.sidebar.number_input("Valor Empréstimo (R$)", min_value=0.0, value=50000.0, step=100.0)
-prazo_meses = st.sidebar.number_input("Prazo (meses)", min_value=1, value=48, step=1)
-data_inicio = st.sidebar.date_input("Início Contrato", date(2022, 1, 15), format="DD/MM/YYYY")
-valor_parcela_real = st.sidebar.number_input("Parcela Cobrada (R$)", min_value=0.0, value=1800.0, step=10.0, format="%.2f")
+valor_emprestimo = st.sidebar.number_input("Valor Empréstimo (R$)", min_value=0.0, value=3921.41, step=100.0)
+prazo_meses = st.sidebar.number_input("Prazo (meses)", min_value=1, value=45, step=1)
+data_inicio = st.sidebar.date_input("Início Contrato (Venc. 1ª Parcela)", date(2020, 7, 16), format="DD/MM/YYYY")
+valor_parcela_real = st.sidebar.number_input("Parcela Cobrada (R$)", min_value=0.0, value=243.94, step=10.0, format="%.2f")
 
 st.sidebar.header("2. Decisão Judicial")
-taxa_judicial_mensal = st.sidebar.number_input("Nova Taxa Juros (Mensal %)", min_value=0.0, value=1.5, step=0.1, format="%.2f")
-data_citacao = st.sidebar.date_input("Data Citação", date(2023, 6, 1), format="DD/MM/YYYY")
+taxa_judicial_mensal = st.sidebar.number_input("Nova Taxa Juros (Mensal %)", min_value=0.0, value=4.59, step=0.1, format="%.2f")
+data_citacao = st.sidebar.date_input("Data Citação", date(2021, 5, 10), format="DD/MM/YYYY")
 data_calculo = st.sidebar.date_input("Data Base Cálculo", date.today(), format="DD/MM/YYYY")
+
+st.sidebar.header("3. Estratégia Processual")
+excluir_str = st.sidebar.text_input("Parcelas a Excluir (Ex: 44, 45)", value="44, 45")
+
+# Processar as parcelas excluídas
+parcelas_excluidas = []
+if excluir_str:
+    try:
+        parcelas_excluidas = [int(x.strip()) for x in excluir_str.split(",") if x.strip().isdigit()]
+    except:
+        st.sidebar.error("Erro ao ler parcelas excluídas. Use apenas números separados por vírgula.")
 
 DATA_CORTE = date(2024, 8, 30)
 
@@ -238,7 +247,7 @@ dados_novos_init = [
     {"Mes": date(2025, 10, 1), "IPCA (%)": 0.09, "Selic Meta (%)": 1.28},
     {"Mes": date(2025, 11, 1), "IPCA (%)": 0.18, "Selic Meta (%)": 1.05},
     {"Mes": date(2025, 12, 1), "IPCA (%)": 0.33, "Selic Meta (%)": 1.22},
-    {"Mes": date(2026, 01, 1), "IPCA (%)": 0.33, "Selic Meta (%)": 1.16},
+    {"Mes": date(2026, 1, 1),  "IPCA (%)": 0.33, "Selic Meta (%)": 1.16}, # Corrigido de 01 para 1
 ]
 
 # Conversão para DataFrame com tipo de data correto
@@ -278,9 +287,7 @@ def calcular_fator_ipca_pos(data_inicio_novo, data_fim_calculo):
     return fator
 
 def calcular_juros_lei_nova(valor_corrigido_ipca, data_inicio_novo, data_fim_calculo):
-    """
-    Calcula juros (Selic - IPCA) acumulados.
-    """
+    """Calcula juros (Selic - IPCA) acumulados."""
     if data_inicio_novo > data_fim_calculo: return 0.0
     
     p_ini = pd.to_datetime(data_inicio_novo).to_period('M')
@@ -312,21 +319,23 @@ if st.button("Calcular Revisional (Híbrido)"):
     
     dados = []
     totais = {"Principal": 0, "CM": 0, "Juros": 0}
-    
-    alerta_data = False
 
     for i in range(1, prazo_meses + 1):
-        vencimento = data_inicio + relativedelta(months=i)
+        
+        # --- EXCLUSÃO DE PARCELAS ---
+        if i in parcelas_excluidas:
+            continue
+            
+        # Ajuste para a parcela 1 bater com a data de início exata
+        vencimento = data_inicio + relativedelta(months=(i-1))
         
         if vencimento > data_calculo: break
         
         # --- ETAPA 1: ATÉ 30/08/2024 ---
         if vencimento <= DATA_CORTE:
-            # Correção TJMG do Vencimento até Corte
             fator_tjmg = calcular_fator_tjmg_parcial(vencimento, DATA_CORTE)
             valor_em_agosto = diferenca_base * fator_tjmg
             
-            # Juros 1% a.m. (Simples) do Vencimento/Citação até Corte
             inicio_juros_antigo = max(vencimento, data_citacao)
             
             if inicio_juros_antigo < DATA_CORTE:
@@ -335,19 +344,15 @@ if st.button("Calcular Revisional (Híbrido)"):
             else:
                 juros_antigo_val = 0.0
                 
-            # Saldo em 30/08
             saldo_principal_agosto = valor_em_agosto
             saldo_juros_agosto = juros_antigo_val
             
             # --- ETAPA 2: DE 01/09/2024 ATÉ HOJE ---
             if data_calculo > DATA_CORTE:
-                # Correção IPCA (Setembro em diante)
                 fator_ipca = calcular_fator_ipca_pos(date(2024, 9, 1), data_calculo)
                 valor_final_principal = saldo_principal_agosto * fator_ipca
                 
-                # Juros Nova Lei (Sobre principal atualizado)
                 juros_novos_val = calcular_juros_lei_nova(valor_final_principal, date(2024, 9, 1), data_calculo)
-                
                 total_juros_linha = saldo_juros_agosto + juros_novos_val
             else:
                 valor_final_principal = saldo_principal_agosto
@@ -360,11 +365,9 @@ if st.button("Calcular Revisional (Híbrido)"):
             # --- PARCELA PÓS-LEI ---
             fator_tjmg = 1.0
             
-            # Correção IPCA total
             fator_ipca = calcular_fator_ipca_pos(vencimento, data_calculo)
             valor_final_principal = diferenca_base * fator_ipca
             
-            # Juros Nova Lei
             inicio_juros = max(vencimento, data_citacao)
             if inicio_juros < data_calculo:
                 juros_novos_val = calcular_juros_lei_nova(valor_final_principal, inicio_juros, data_calculo)
@@ -377,6 +380,7 @@ if st.button("Calcular Revisional (Híbrido)"):
         total_linha = valor_final_principal + total_juros_linha
         
         dados.append({
+            "Nº": i, # Adicionada coluna do número da parcela
             "Vencimento": vencimento.strftime("%d/%m/%Y"),
             "Original": diferenca_base,
             "Regra": memoria,
@@ -401,6 +405,7 @@ if st.button("Calcular Revisional (Híbrido)"):
         total_geral = totais['Principal'] + totais['CM'] + totais['Juros']
         col4.metric("TOTAL FINAL", f"R$ {total_geral:,.2f}", delta="Execução")
         
+        # Formatando a exibição da tabela (incluindo o Nº)
         st.dataframe(df_res.style.format({
             "Original": "R$ {:.2f}",
             "Principal Atualizado": "R$ {:.2f}",
