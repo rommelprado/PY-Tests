@@ -227,7 +227,7 @@ st.sidebar.markdown("---")
 
 # --- ABA DE ÍNDICES NOVOS (IPCA + SELIC) ---
 st.subheader("Configuração dos Índices Pós-Lei (Set/24 em diante)")
-st.info("Valores Oficiais carregados até Nov/2025 (IPCA fornecido + Selic Mensal Banco Central).")
+st.info("Valores Oficiais carregados até Jan/2026 (IPCA fornecido + Selic Mensal Banco Central).")
 
 # DADOS CARREGADOS (IPCA DO USUÁRIO + SELIC MENSAL DO PERÍODO)
 dados_novos_init = [
