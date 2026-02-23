@@ -324,12 +324,17 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         
         if vencimento > data_calculo: break
 
+        # Dias totais da correção monetária (Do pagamento até hoje)
+        dias_cm = (data_calculo - vencimento).days
+        info_tempo_cm = f"{dias_cm}d" if dias_cm > 0 else "0d"
+
         # --- EXCLUSÃO SUTIL DE PARCELAS (ZERADAS) ---
         if i in parcelas_excluidas:
             dados.append({
                 "Nº": i,
                 "Vencimento": vencimento.strftime("%d/%m/%Y"),
                 "Original": 0.00,
+                "Tempo CM (Dias)": "-",
                 "Fator TJMG": np.nan,
                 "Fator IPCA": np.nan,
                 "Principal Atualizado": 0.00,
@@ -396,6 +401,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             "Nº": i,
             "Vencimento": vencimento.strftime("%d/%m/%Y"),
             "Original": diferenca_base,
+            "Tempo CM (Dias)": info_tempo_cm,
             "Fator TJMG": fator_tjmg,
             "Fator IPCA": fator_ipca,
             "Principal Atualizado": valor_final_principal,
@@ -417,7 +423,6 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     if not df_res.empty:
         st.markdown("### Memória de Cálculo Parcelada")
         
-        # Reduzi sutilmente o CSS da tabela para garantir que todas essas novas colunas caibam na folha A4
         st.table(df_res.style.format({
             "Original": "R$ {:.2f}",
             "Fator TJMG": "{:.4f}",
