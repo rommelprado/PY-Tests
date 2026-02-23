@@ -324,19 +324,14 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         
         if vencimento > data_calculo: break
 
-        # Dias totais da correção monetária (Do pagamento até hoje)
-        dias_cm = (data_calculo - vencimento).days
-        info_tempo_cm = f"{dias_cm}d" if dias_cm > 0 else "0d"
-
         # --- EXCLUSÃO SUTIL DE PARCELAS (ZERADAS) ---
         if i in parcelas_excluidas:
             dados.append({
                 "Nº": i,
                 "Vencimento": vencimento.strftime("%d/%m/%Y"),
                 "Original": 0.00,
-                "Tempo CM (Dias)": "-",
-                "Fator TJMG": np.nan,
-                "Fator IPCA": np.nan,
+                "Fator TJMG": "-",
+                "Fator IPCA": "-",
                 "Principal Atualizado": 0.00,
                 "Taxa 1% (Dias)": "-",
                 "Juros 1% a.m.": 0.00,
@@ -347,6 +342,9 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             continue 
             
         # Variáveis zeradas para iniciar
+        dias_tjmg = 0
+        dias_ipca = 0
+        
         dias_antigos = 0
         taxa_antiga_pct = 0.0
         juros_antigo_val = 0.0
@@ -359,6 +357,14 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         if vencimento <= DATA_CORTE:
             fator_tjmg = calcular_fator_tjmg_parcial(vencimento, DATA_CORTE)
             valor_em_agosto = diferenca_base * fator_tjmg
+            
+            # Divisão dos dias de Correção Monetária
+            if data_calculo <= DATA_CORTE:
+                dias_tjmg = (data_calculo - vencimento).days
+                dias_ipca = 0
+            else:
+                dias_tjmg = (DATA_CORTE - vencimento).days
+                dias_ipca = (data_calculo - DATA_CORTE).days # Contagem contínua para não perder dias
             
             inicio_juros_antigo = max(vencimento, data_citacao)
             
@@ -382,6 +388,8 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         else:
             # --- PARCELA PÓS-LEI ---
             fator_tjmg = 1.0
+            dias_tjmg = 0
+            dias_ipca = (data_calculo - vencimento).days
             
             fator_ipca = calcular_fator_ipca_pos(vencimento, data_calculo)
             valor_final_principal = diferenca_base * fator_ipca
@@ -392,7 +400,10 @@ if st.sidebar.button("Calcular Execução", type="primary"):
 
         total_linha = valor_final_principal + juros_antigo_val + juros_novos_val
         
-        # Formatação das colunas de Taxa e Tempo
+        # Formatação Visual Elegante (Mesclando Fator Numérico com Dias em texto)
+        str_fator_tjmg = f"{fator_tjmg:.4f} ({dias_tjmg}d)" if dias_tjmg > 0 else "-"
+        str_fator_ipca = f"{fator_ipca:.4f} ({dias_ipca}d)" if dias_ipca > 0 else "-"
+        
         info_mora_1 = f"{taxa_antiga_pct:.2f}% ({dias_antigos}d)" if dias_antigos > 0 else "-"
         info_mora_selic = f"{taxa_nova_pct:.2f}% ({meses_novos}m)" if meses_novos > 0 else "-"
 
@@ -401,9 +412,8 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             "Nº": i,
             "Vencimento": vencimento.strftime("%d/%m/%Y"),
             "Original": diferenca_base,
-            "Tempo CM (Dias)": info_tempo_cm,
-            "Fator TJMG": fator_tjmg,
-            "Fator IPCA": fator_ipca,
+            "Fator TJMG": str_fator_tjmg,
+            "Fator IPCA": str_fator_ipca,
             "Principal Atualizado": valor_final_principal,
             "Taxa 1% (Dias)": info_mora_1,
             "Juros 1% a.m.": juros_antigo_val,
@@ -423,10 +433,9 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     if not df_res.empty:
         st.markdown("### Memória de Cálculo Parcelada")
         
+        # O Fator TJMG e IPCA não estão mais no .format() porque agora são strings com os dias embutidos
         st.table(df_res.style.format({
             "Original": "R$ {:.2f}",
-            "Fator TJMG": "{:.4f}",
-            "Fator IPCA": "{:.4f}",
             "Principal Atualizado": "R$ {:.2f}",
             "Juros 1% a.m.": "R$ {:.2f}",
             "Juros Lei 14.905": "R$ {:.2f}",
@@ -453,7 +462,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             csv = convert_df(df_res)
             st.download_button("💾 Baixar Tabela (Excel/CSV)", csv, "calculo_judicial.csv", "text/csv", use_container_width=True)
             
-        with col_btn2:
+      with col_btn2:
             html_botao = """
             <script>
             function imprimir() { window.parent.print(); }
