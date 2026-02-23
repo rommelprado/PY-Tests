@@ -330,7 +330,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     st.divider()
     
     dados = []
-    totais = {"Principal": 0, "CM": 0, "Juros": 0}
+    totais = {"Principal": 0, "CM": 0, "Juros_1_pct": 0, "Juros_Selic": 0}
 
     for i in range(1, prazo_meses + 1):
         
@@ -344,14 +344,18 @@ if st.sidebar.button("Calcular Execução", type="primary"):
                 "Nº": i,
                 "Vencimento": vencimento.strftime("%d/%m/%Y"),
                 "Original": 0.00,
-                "Fator TJMG": np.nan,  # Fica vazio na tabela
-                "Fator IPCA": np.nan,  # Fica vazio na tabela
+                "Fator TJMG": np.nan,
+                "Fator IPCA": np.nan,
                 "Principal Atualizado": 0.00,
-                "Juros Acumulados": 0.00,
+                "Juros 1% a.m.": 0.00,
+                "Juros Lei 14.905": 0.00,
                 "Total Devido": 0.00
             })
             continue 
             
+        juros_antigo_val = 0.0
+        juros_novos_val = 0.0
+        
         # --- ETAPA 1: ATÉ 30/08/2024 ---
         if vencimento <= DATA_CORTE:
             fator_tjmg = calcular_fator_tjmg_parcial(vencimento, DATA_CORTE)
@@ -362,22 +366,15 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             if inicio_juros_antigo < DATA_CORTE:
                 dias_antigos = (DATA_CORTE - inicio_juros_antigo).days
                 juros_antigo_val = valor_em_agosto * (dias_antigos / 30) * 0.01
-            else:
-                juros_antigo_val = 0.0
                 
-            saldo_principal_agosto = valor_em_agosto
-            saldo_juros_agosto = juros_antigo_val
-            
             # --- ETAPA 2: DE 01/09/2024 ATÉ HOJE ---
             if data_calculo > DATA_CORTE:
                 fator_ipca = calcular_fator_ipca_pos(date(2024, 9, 1), data_calculo)
-                valor_final_principal = saldo_principal_agosto * fator_ipca
+                valor_final_principal = valor_em_agosto * fator_ipca
                 
                 juros_novos_val = calcular_juros_lei_nova(valor_final_principal, date(2024, 9, 1), data_calculo)
-                total_juros_linha = saldo_juros_agosto + juros_novos_val
             else:
-                valor_final_principal = saldo_principal_agosto
-                total_juros_linha = saldo_juros_agosto
+                valor_final_principal = valor_em_agosto
                 fator_ipca = 1.0
                 
         else:
@@ -390,12 +387,8 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             inicio_juros = max(vencimento, data_citacao)
             if inicio_juros < data_calculo:
                 juros_novos_val = calcular_juros_lei_nova(valor_final_principal, inicio_juros, data_calculo)
-            else:
-                juros_novos_val = 0.0
-                
-            total_juros_linha = juros_novos_val
 
-        total_linha = valor_final_principal + total_juros_linha
+        total_linha = valor_final_principal + juros_antigo_val + juros_novos_val
         
         # Adiciona a linha detalhada na tabela
         dados.append({
@@ -405,13 +398,15 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             "Fator TJMG": fator_tjmg,
             "Fator IPCA": fator_ipca,
             "Principal Atualizado": valor_final_principal,
-            "Juros Acumulados": total_juros_linha,
+            "Juros 1% a.m.": juros_antigo_val,
+            "Juros Lei 14.905": juros_novos_val,
             "Total Devido": total_linha
         })
         
         totais["Principal"] += diferenca_base
         totais["CM"] += (valor_final_principal - diferenca_base)
-        totais["Juros"] += total_juros_linha
+        totais["Juros_1_pct"] += juros_antigo_val
+        totais["Juros_Selic"] += juros_novos_val
 
     # --- RESULTADOS ---
     df_res = pd.DataFrame(dados)
@@ -419,25 +414,29 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     if not df_res.empty:
         st.markdown("### Memória de Cálculo Parcelada")
         
-        # Utilizamos st.table e limitamos a 4 casas decimais os fatores
+        # Utilizamos st.table e formatamos as novas colunas
         st.table(df_res.style.format({
             "Original": "R$ {:.2f}",
             "Fator TJMG": "{:.4f}",
             "Fator IPCA": "{:.4f}",
             "Principal Atualizado": "R$ {:.2f}",
-            "Juros Acumulados": "R$ {:.2f}",
+            "Juros 1% a.m.": "R$ {:.2f}",
+            "Juros Lei 14.905": "R$ {:.2f}",
             "Total Devido": "R$ {:.2f}"
-        }, na_rep="-")) # na_rep="-" coloca um traço nas parcelas excluídas
+        }, na_rep="-")) 
         
         st.divider()
         st.markdown("### 🏛️ Resumo da Condenação a Executar")
-        col1, col2, col3, col4 = st.columns(4)
+        
+        # Agora são 5 colunas de resumo para acomodar a quebra dos juros
+        col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("Principal Original", f"R$ {totais['Principal']:,.2f}")
         col2.metric("Correção (TJMG+IPCA)", f"R$ {totais['CM']:,.2f}")
-        col3.metric("Juros (1% + Lei Nova)", f"R$ {totais['Juros']:,.2f}")
+        col3.metric("Juros Mora (1% a.m.)", f"R$ {totais['Juros_1_pct']:,.2f}")
+        col4.metric("Juros Lei 14.905", f"R$ {totais['Juros_Selic']:,.2f}")
         
-        total_geral = totais['Principal'] + totais['CM'] + totais['Juros']
-        col4.metric("TOTAL FINAL", f"R$ {total_geral:,.2f}", delta="Crédito do Autor")
+        total_geral = totais['Principal'] + totais['CM'] + totais['Juros_1_pct'] + totais['Juros_Selic']
+        col5.metric("TOTAL FINAL", f"R$ {total_geral:,.2f}", delta="Crédito do Autor")
         
         st.divider()
         
@@ -449,27 +448,15 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             st.download_button("💾 Baixar Tabela (Excel/CSV)", csv, "calculo_judicial.csv", "text/csv", use_container_width=True)
             
         with col_btn2:
-            # Botão de impressão isolado via iframe comunicando com a janela principal
             html_botao = """
             <script>
-            function imprimir() {
-                window.parent.print();
-            }
+            function imprimir() { window.parent.print(); }
             </script>
             <style>
             .btn-imprimir {
-                background-color: #2e7d32;
-                color: white;
-                border: none;
-                padding: 0.5rem 1rem;
-                font-size: 16px;
-                border-radius: 8px;
-                cursor: pointer;
-                font-weight: bold;
-                text-align: center;
-                width: 100%;
-                font-family: 'Source Sans Pro', sans-serif;
-                margin-top: 15px;
+                background-color: #2e7d32; color: white; border: none; padding: 0.5rem 1rem;
+                font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold;
+                text-align: center; width: 100%; font-family: 'Source Sans Pro', sans-serif; margin-top: 15px;
             }
             .btn-imprimir:hover { background-color: #1b5e20; }
             </style>
