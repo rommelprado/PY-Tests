@@ -293,16 +293,27 @@ def calcular_juros_lei_nova(valor_corrigido_ipca, data_inicio_novo, data_fim_cal
         (df_novos_indices_input['periodo'] >= p_ini) & 
         (df_novos_indices_input['periodo'] <= p_fim)
     ]
-    juros_acumulados = 0.0
+    
+    # Nova Metodologia: Acumulação Composta (Resolução CMN 5.171/2024)
+    fator_selic_acumulado = 1.0
+    fator_ipca_acumulado = 1.0
     meses_contados = 0
+    
     for idx, row in df_filtrado.iterrows():
-        selic = row['Selic Meta (%)']
-        ipca = row['IPCA (%)']
-        juro_real = max(0, selic - ipca)
-        juros_acumulados += juro_real
+        fator_selic_acumulado *= (1 + (row['Selic Meta (%)'] / 100))
+        fator_ipca_acumulado *= (1 + (row['IPCA (%)'] / 100))
         meses_contados += 1
-    return valor_corrigido_ipca * (juros_acumulados / 100), juros_acumulados, meses_contados
-
+        
+    # Transforma os fatores novamente em percentual de variação
+    var_selic_pct = (fator_selic_acumulado - 1) * 100
+    var_ipca_pct = (fator_ipca_acumulado - 1) * 100
+    
+    # Subtrai o IPCA acumulado da Selic acumulada
+    juros_acumulados = max(0, var_selic_pct - var_ipca_pct)
+    
+    valor_juros_reais = valor_corrigido_ipca * (juros_acumulados / 100)
+    
+    return valor_juros_reais, juros_acumulados, meses_contados
 
 # --- PROCESSAMENTO PRINCIPAL ---
 if st.sidebar.button("Calcular Execução", type="primary"):
