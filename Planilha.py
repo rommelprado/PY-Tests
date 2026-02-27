@@ -139,13 +139,31 @@ st.title("⚖️ Relatório de Cálculo Revisional")
 st.markdown("**Regra:** TJMG + 1% a.m. até 29/08/2024 | IPCA + (Selic - IPCA) após 30/08/2024 (Lei 14.905/24)")
 st.markdown("---")
 
-# --- PROCESSAMENTO DOS DADOS ANTIGOS (AGORA SIMPLIFICADO) ---
+# --- FUNÇÕES DE FORMATAÇÃO BRASILEIRA ---
+def fmt_br(valor, casas=2):
+    """Converte número para o padrão brasileiro (ex: 1.234,56)"""
+    if pd.isna(valor) or valor == "-": return "-"
+    if isinstance(valor, str): return valor
+    formatacao = f"{{:,.{casas}f}}"
+    return formatacao.format(valor).replace(",", "X").replace(".", ",").replace("X", ".")
+
+def fmt_moeda(valor):
+    if pd.isna(valor) or valor == "-": return "-"
+    if isinstance(valor, str): return valor
+    return f"R$ {fmt_br(valor)}"
+
+def fmt_pct(valor):
+    if pd.isna(valor) or valor == "-": return "-"
+    if isinstance(valor, str): return valor
+    return f"{fmt_br(valor)}%"
+
+
+# --- PROCESSAMENTO DOS DADOS ANTIGOS ---
 @st.cache_data
 def carregar_tabela_tjmg():
     try:
         df = pd.read_csv(io.StringIO(CSV_TJMG))
         df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
-        # A tabela do PDF já traz os fatores acumulados prontos
         df['Fator_Acumulado'] = pd.to_numeric(df['Fator_Acumulado'], errors='coerce').fillna(1.0)
         df = df.dropna(subset=['Data']).sort_values('Data')
         df['periodo'] = df['Data'].dt.to_period('M')
@@ -168,8 +186,6 @@ def calcular_fator_tjmg_parcial(data_venc, data_corte_limite):
     linha_venc = df_tjmg[df_tjmg['periodo'] == p_venc]
     fator_inicio = linha_venc['Fator_Acumulado'].iloc[0] if not linha_venc.empty else 1.0
         
-    # Como a tabela traz os multiplicadores invertidos (para trazer ao presente),
-    # o fator antigo é maior que o fator novo. Logo, divide-se o Início pelo Fim.
     return fator_inicio / fator_fim
 
 # --- FUNÇÕES FINANCEIRAS BÁSICAS ---
@@ -177,13 +193,9 @@ def calcular_pmt_mensal(principal, taxa_mensal_pct, meses, antecipada=False):
     taxa = taxa_mensal_pct / 100
     if taxa == 0: return principal / meses
     
-    # Cálculo da Price Padrão (Postecipada)
     pmt = principal * (taxa * (1 + taxa)**meses) / ((1 + taxa)**meses - 1)
-    
-    # Ajuste para Price com Entrada (Antecipada)
     if antecipada:
         pmt = pmt / (1 + taxa)
-        
     return pmt
 
 @st.cache_data
@@ -197,16 +209,13 @@ nome_cliente = st.sidebar.text_input("Nome do Cliente", value="")
 st.sidebar.header("1. Contrato")
 valor_emprestimo = st.sidebar.number_input("Valor Empréstimo (R$)", min_value=0.0, value=3921.41, step=100.0)
 prazo_meses = st.sidebar.number_input("Prazo (meses)", min_value=1, value=45, step=1)
-taxa_contrato_mensal = st.sidebar.number_input("Taxa Contrato (Mensal %)", min_value=0.0, value=5.99, step=0.1, format="%.2f")
-
-# Checkbox para identificar se a parcela 1 foi paga no ato
+taxa_contrato_mensal = st.sidebar.number_input("Taxa Contrato (Mensal %)", min_value=0.0, value=5.99, step=0.1)
 pagamento_antecipado = st.sidebar.checkbox("1ª Parcela paga no ato (Entrada / Antecipada)", value=True)
-
 data_inicio = st.sidebar.date_input("Início Contrato (Venc. 1ª Parcela)", date(2020, 7, 16), format="DD/MM/YYYY")
-valor_parcela_real = st.sidebar.number_input("Parcela Cobrada (R$)", min_value=0.0, value=243.94, step=10.0, format="%.2f")
+valor_parcela_real = st.sidebar.number_input("Parcela Cobrada (R$)", min_value=0.0, value=243.94, step=10.0)
 
 st.sidebar.header("2. Decisão Judicial")
-taxa_judicial_mensal = st.sidebar.number_input("Nova Taxa Juros (Mensal %)", min_value=0.0, value=4.59, step=0.1, format="%.2f")
+taxa_judicial_mensal = st.sidebar.number_input("Nova Taxa Juros (Mensal %)", min_value=0.0, value=4.59, step=0.1)
 data_citacao = st.sidebar.date_input("Data Citação", date(2021, 5, 10), format="DD/MM/YYYY")
 data_calculo = st.sidebar.date_input("Data Base Cálculo", date.today(), format="DD/MM/YYYY")
 
@@ -220,7 +229,7 @@ if excluir_str:
     except:
         st.sidebar.error("Erro ao ler parcelas excluídas. Use apenas números separados por vírgula.")
 
-DATA_CORTE = date(2024, 8, 29) # Ajustado para o último dia antes da nova lei
+DATA_CORTE = date(2024, 8, 29) 
 
 st.sidebar.markdown("---")
 
@@ -249,13 +258,14 @@ with st.sidebar.expander("Índices Pós-Lei (Set/24 em diante)"):
     df_init = pd.DataFrame(dados_novos_init)
     df_init["Mes"] = pd.to_datetime(df_init["Mes"])
     
+    # O st.data_editor formata a visualização na barra lateral
     df_novos_indices_input = st.data_editor(
         df_init, 
         num_rows="dynamic",
         column_config={
             "Mes": st.column_config.DateColumn("Mês Ref.", format="MM/YYYY", step=1),
-            "IPCA (%)": st.column_config.NumberColumn(format="%.2f%%"),
-            "Selic Meta (%)": st.column_config.NumberColumn(format="%.2f%%")
+            "IPCA (%)": st.column_config.NumberColumn(),
+            "Selic Meta (%)": st.column_config.NumberColumn()
         },
         use_container_width=True
     )
@@ -304,7 +314,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         
     st.markdown(f"""
     <div class="info-cabecalho">
-        <strong>Valor Financiado:</strong> R$ {valor_emprestimo:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <strong>Valor Financiado:</strong> {fmt_moeda(valor_emprestimo)} &nbsp;&nbsp;|&nbsp;&nbsp; 
         <strong>Prazo do Contrato:</strong> {prazo_meses} meses &nbsp;&nbsp;|&nbsp;&nbsp; 
         <strong>Data da Citação:</strong> {data_citacao.strftime('%d/%m/%Y')} &nbsp;&nbsp;|&nbsp;&nbsp; 
         <strong>Atualizado até:</strong> {data_calculo.strftime('%d/%m/%Y')}
@@ -315,9 +325,9 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     diferenca_base = valor_parcela_real - parcela_revisada
     
     colA, colB, colC = st.columns(3)
-    colA.metric(f"Parcela do Contrato ({taxa_contrato_mensal:.2f}% a.m.)", f"R$ {valor_parcela_real:,.2f}")
-    colB.metric(f"Parcela Judicial ({taxa_judicial_mensal:.2f}% a.m.)", f"R$ {parcela_revisada:,.2f}")
-    colC.metric("Indébito Mensal (Diferença)", f"R$ {diferenca_base:,.2f}")
+    colA.metric(f"Parcela do Contrato ({fmt_pct(taxa_contrato_mensal)} a.m.)", fmt_moeda(valor_parcela_real))
+    colB.metric(f"Parcela Judicial ({fmt_pct(taxa_judicial_mensal)} a.m.)", fmt_moeda(parcela_revisada))
+    colC.metric("Indébito Mensal (Diferença)", fmt_moeda(diferenca_base))
     
     st.divider()
     
@@ -338,16 +348,16 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             dados.append({
                 "Nº": i,
                 "Vencimento": vencimento.strftime("%d/%m/%Y"),
-                "Original": 0.00,
+                "Original": "-",
                 "Tempo CM (Dias)": "-",
                 "Fator TJMG": "-",
                 "Fator IPCA": "-",
-                "Principal Atualizado": 0.00,
+                "Principal Atualizado": "-",
                 "Taxa 1% (Dias)": "-",
-                "Juros 1% a.m.": 0.00,
+                "Juros 1% a.m.": "-",
                 "Taxa Selic (Meses)": "-",
-                "Juros Lei 14.905": 0.00,
-                "Total Devido": 0.00
+                "Juros Lei 14.905": "-",
+                "Total Devido": "-"
             })
             continue 
             
@@ -408,25 +418,25 @@ if st.sidebar.button("Calcular Execução", type="primary"):
 
         total_linha = valor_final_principal + juros_antigo_val + juros_novos_val
         
-        str_fator_tjmg = f"{fator_tjmg:.4f} ({dias_tjmg}d)" if dias_tjmg > 0 else "-"
-        str_fator_ipca = f"{fator_ipca:.4f} ({dias_ipca}d)" if dias_ipca > 0 else "-"
+        str_fator_tjmg = f"{fmt_br(fator_tjmg, 4)} ({dias_tjmg}d)" if dias_tjmg > 0 else "-"
+        str_fator_ipca = f"{fmt_br(fator_ipca, 4)} ({dias_ipca}d)" if dias_ipca > 0 else "-"
         
-        info_mora_1 = f"{taxa_antiga_pct:.2f}% ({dias_antigos}d)" if dias_antigos > 0 else "-"
-        info_mora_selic = f"{taxa_nova_pct:.2f}% ({meses_novos}m)" if meses_novos > 0 else "-"
+        info_mora_1 = f"{fmt_br(taxa_antiga_pct)}% ({dias_antigos}d)" if dias_antigos > 0 else "-"
+        info_mora_selic = f"{fmt_br(taxa_nova_pct)}% ({meses_novos}m)" if meses_novos > 0 else "-"
 
         dados.append({
             "Nº": i,
             "Vencimento": vencimento.strftime("%d/%m/%Y"),
-            "Original": diferenca_base,
+            "Original": fmt_moeda(diferenca_base),
             "Tempo CM (Dias)": info_tempo_cm,
             "Fator TJMG": str_fator_tjmg,
             "Fator IPCA": str_fator_ipca,
-            "Principal Atualizado": valor_final_principal,
+            "Principal Atualizado": fmt_moeda(valor_final_principal),
             "Taxa 1% (Dias)": info_mora_1,
-            "Juros 1% a.m.": juros_antigo_val,
+            "Juros 1% a.m.": fmt_moeda(juros_antigo_val),
             "Taxa Selic (Meses)": info_mora_selic,
-            "Juros Lei 14.905": juros_novos_val,
-            "Total Devido": total_linha
+            "Juros Lei 14.905": fmt_moeda(juros_novos_val),
+            "Total Devido": fmt_moeda(total_linha)
         })
         
         totais["Principal"] += diferenca_base
@@ -440,24 +450,19 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     if not df_res.empty:
         st.markdown("### Memória de Cálculo Parcelada")
         
-        st.table(df_res.style.format({
-            "Original": "R$ {:.2f}",
-            "Principal Atualizado": "R$ {:.2f}",
-            "Juros 1% a.m.": "R$ {:.2f}",
-            "Juros Lei 14.905": "R$ {:.2f}",
-            "Total Devido": "R$ {:.2f}"
-        }, na_rep="-")) 
+        # A tabela agora exibe tudo como strings já formatadas no padrão BR
+        st.table(df_res) 
         
         st.divider()
         st.markdown("### 🏛️ Resumo da Condenação a Executar")
         col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Principal Original", f"R$ {totais['Principal']:,.2f}")
-        col2.metric("Correção (TJMG+IPCA)", f"R$ {totais['CM']:,.2f}")
-        col3.metric("Juros Mora (1% a.m.)", f"R$ {totais['Juros_1_pct']:,.2f}")
-        col4.metric("Juros Lei 14.905", f"R$ {totais['Juros_Selic']:,.2f}")
+        col1.metric("Principal Original", fmt_moeda(totais['Principal']))
+        col2.metric("Correção (TJMG+IPCA)", fmt_moeda(totais['CM']))
+        col3.metric("Juros Mora (1% a.m.)", fmt_moeda(totais['Juros_1_pct']))
+        col4.metric("Juros Lei 14.905", fmt_moeda(totais['Juros_Selic']))
         
         total_geral = totais['Principal'] + totais['CM'] + totais['Juros_1_pct'] + totais['Juros_Selic']
-        col5.metric("TOTAL FINAL", f"R$ {total_geral:,.2f}", delta="Crédito do Autor")
+        col5.metric("TOTAL FINAL", fmt_moeda(total_geral), delta="Crédito do Autor")
         
         st.divider()
         
@@ -465,6 +470,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         col_btn1, col_btn2 = st.columns(2)
         
         with col_btn1:
+            # Para exportar em CSV mantemos os números puros para quem for auditar no Excel
             csv = convert_df(df_res)
             st.download_button("💾 Baixar Tabela (Excel/CSV)", csv, "calculo_judicial.csv", "text/csv", use_container_width=True)
             
