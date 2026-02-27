@@ -315,4 +315,175 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     diferenca_base = valor_parcela_real - parcela_revisada
     
     colA, colB, colC = st.columns(3)
-    colA.metric(f"Parcela do Contrato ({taxa_contrato_mensal:.2f}% a.m.)", f"R$ {valor_parcela
+    colA.metric(f"Parcela do Contrato ({taxa_contrato_mensal:.2f}% a.m.)", f"R$ {valor_parcela_real:,.2f}")
+    colB.metric(f"Parcela Judicial ({taxa_judicial_mensal:.2f}% a.m.)", f"R$ {parcela_revisada:,.2f}")
+    colC.metric("Indébito Mensal (Diferença)", f"R$ {diferenca_base:,.2f}")
+    
+    st.divider()
+    
+    dados = []
+    totais = {"Principal": 0, "CM": 0, "Juros_1_pct": 0, "Juros_Selic": 0}
+
+    for i in range(1, prazo_meses + 1):
+        
+        vencimento = data_inicio + relativedelta(months=(i-1))
+        
+        if vencimento > data_calculo: break
+
+        dias_cm = (data_calculo - vencimento).days
+        info_tempo_cm = f"{dias_cm}d" if dias_cm > 0 else "0d"
+
+        # --- EXCLUSÃO SUTIL DE PARCELAS (ZERADAS) ---
+        if i in parcelas_excluidas:
+            dados.append({
+                "Nº": i,
+                "Vencimento": vencimento.strftime("%d/%m/%Y"),
+                "Original": 0.00,
+                "Tempo CM (Dias)": "-",
+                "Fator TJMG": "-",
+                "Fator IPCA": "-",
+                "Principal Atualizado": 0.00,
+                "Taxa 1% (Dias)": "-",
+                "Juros 1% a.m.": 0.00,
+                "Taxa Selic (Meses)": "-",
+                "Juros Lei 14.905": 0.00,
+                "Total Devido": 0.00
+            })
+            continue 
+            
+        dias_tjmg = 0
+        dias_ipca = 0
+        
+        dias_antigos = 0
+        taxa_antiga_pct = 0.0
+        juros_antigo_val = 0.0
+        
+        meses_novos = 0
+        taxa_nova_pct = 0.0
+        juros_novos_val = 0.0
+        
+        # --- ETAPA 1: ATÉ 29/08/2024 ---
+        if vencimento <= DATA_CORTE:
+            fator_tjmg = calcular_fator_tjmg_parcial(vencimento, DATA_CORTE)
+            valor_em_agosto = diferenca_base * fator_tjmg
+            
+            if data_calculo <= DATA_CORTE:
+                dias_tjmg = (data_calculo - vencimento).days
+                dias_ipca = 0
+            else:
+                dias_tjmg = (DATA_CORTE - vencimento).days
+                dias_ipca = (data_calculo - DATA_CORTE).days 
+            
+            inicio_juros_antigo = max(vencimento, data_citacao)
+            
+            if inicio_juros_antigo < DATA_CORTE:
+                dias_antigos = (DATA_CORTE - inicio_juros_antigo).days
+                taxa_antiga_pct = (dias_antigos / 30) * 1.0 
+                juros_antigo_val = valor_em_agosto * (taxa_antiga_pct / 100)
+                
+            saldo_principal_agosto = valor_em_agosto
+            
+            # --- ETAPA 2: DE 30/08/2024 ATÉ HOJE ---
+            if data_calculo > DATA_CORTE:
+                fator_ipca = calcular_fator_ipca_pos(date(2024, 9, 1), data_calculo)
+                valor_final_principal = saldo_principal_agosto * fator_ipca
+                
+                juros_novos_val, taxa_nova_pct, meses_novos = calcular_juros_lei_nova(valor_final_principal, date(2024, 9, 1), data_calculo)
+            else:
+                valor_final_principal = saldo_principal_agosto
+                fator_ipca = 1.0
+                
+        else:
+            # --- PARCELA PÓS-LEI ---
+            fator_tjmg = 1.0
+            dias_tjmg = 0
+            dias_ipca = (data_calculo - vencimento).days
+            
+            fator_ipca = calcular_fator_ipca_pos(vencimento, data_calculo)
+            valor_final_principal = diferenca_base * fator_ipca
+            
+            inicio_juros = max(vencimento, data_citacao)
+            if inicio_juros < data_calculo:
+                juros_novos_val, taxa_nova_pct, meses_novos = calcular_juros_lei_nova(valor_final_principal, inicio_juros, data_calculo)
+
+        total_linha = valor_final_principal + juros_antigo_val + juros_novos_val
+        
+        str_fator_tjmg = f"{fator_tjmg:.4f} ({dias_tjmg}d)" if dias_tjmg > 0 else "-"
+        str_fator_ipca = f"{fator_ipca:.4f} ({dias_ipca}d)" if dias_ipca > 0 else "-"
+        
+        info_mora_1 = f"{taxa_antiga_pct:.2f}% ({dias_antigos}d)" if dias_antigos > 0 else "-"
+        info_mora_selic = f"{taxa_nova_pct:.2f}% ({meses_novos}m)" if meses_novos > 0 else "-"
+
+        dados.append({
+            "Nº": i,
+            "Vencimento": vencimento.strftime("%d/%m/%Y"),
+            "Original": diferenca_base,
+            "Tempo CM (Dias)": info_tempo_cm,
+            "Fator TJMG": str_fator_tjmg,
+            "Fator IPCA": str_fator_ipca,
+            "Principal Atualizado": valor_final_principal,
+            "Taxa 1% (Dias)": info_mora_1,
+            "Juros 1% a.m.": juros_antigo_val,
+            "Taxa Selic (Meses)": info_mora_selic,
+            "Juros Lei 14.905": juros_novos_val,
+            "Total Devido": total_linha
+        })
+        
+        totais["Principal"] += diferenca_base
+        totais["CM"] += (valor_final_principal - diferenca_base)
+        totais["Juros_1_pct"] += juros_antigo_val
+        totais["Juros_Selic"] += juros_novos_val
+
+    # --- RESULTADOS ---
+    df_res = pd.DataFrame(dados)
+    
+    if not df_res.empty:
+        st.markdown("### Memória de Cálculo Parcelada")
+        
+        st.table(df_res.style.format({
+            "Original": "R$ {:.2f}",
+            "Principal Atualizado": "R$ {:.2f}",
+            "Juros 1% a.m.": "R$ {:.2f}",
+            "Juros Lei 14.905": "R$ {:.2f}",
+            "Total Devido": "R$ {:.2f}"
+        }, na_rep="-")) 
+        
+        st.divider()
+        st.markdown("### 🏛️ Resumo da Condenação a Executar")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Principal Original", f"R$ {totais['Principal']:,.2f}")
+        col2.metric("Correção (TJMG+IPCA)", f"R$ {totais['CM']:,.2f}")
+        col3.metric("Juros Mora (1% a.m.)", f"R$ {totais['Juros_1_pct']:,.2f}")
+        col4.metric("Juros Lei 14.905", f"R$ {totais['Juros_Selic']:,.2f}")
+        
+        total_geral = totais['Principal'] + totais['CM'] + totais['Juros_1_pct'] + totais['Juros_Selic']
+        col5.metric("TOTAL FINAL", f"R$ {total_geral:,.2f}", delta="Crédito do Autor")
+        
+        st.divider()
+        
+        # --- BOTÕES DE EXPORTAÇÃO E IMPRESSÃO ---
+        col_btn1, col_btn2 = st.columns(2)
+        
+        with col_btn1:
+            csv = convert_df(df_res)
+            st.download_button("💾 Baixar Tabela (Excel/CSV)", csv, "calculo_judicial.csv", "text/csv", use_container_width=True)
+            
+        with col_btn2:
+            html_botao = """
+            <script>
+            function imprimir() { window.parent.print(); }
+            </script>
+            <style>
+            .btn-imprimir {
+                background-color: #2e7d32; color: white; border: none; padding: 0.5rem 1rem;
+                font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold;
+                text-align: center; width: 100%; font-family: 'Source Sans Pro', sans-serif; margin-top: 15px;
+            }
+            .btn-imprimir:hover { background-color: #1b5e20; }
+            </style>
+            <button onclick="imprimir()" class="btn-imprimir">🖨️ Imprimir Relatório (PDF)</button>
+            """
+            components.html(html_botao, height=70)
+            
+    else:
+        st.warning("Nenhuma parcela vencida no período selecionado.")
