@@ -135,7 +135,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("⚖️ Relatório de Cálculo Revisional")
-st.markdown("**Regra:** TJMG + 1% a.m. até 29/08/2024 | IPCA + (Selic - IPCA) após 30/08/2024 (Lei 14.905/24)")
+st.markdown("**Regra:** TJMG + 1% a.m. até 28/08/2024 | IPCA + (Selic - IPCA) após 29/08/2024 (Lei 14.905/24)")
 st.markdown("---")
 
 # --- FUNÇÕES DE FORMATAÇÃO BRASILEIRA ---
