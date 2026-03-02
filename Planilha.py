@@ -226,7 +226,7 @@ if excluir_str:
     except:
         st.sidebar.error("Erro ao ler parcelas excluídas.")
 
-DATA_CORTE = date(2024, 8, 29) 
+DATA_CORTE = date(2024, 8, 28) 
 
 st.sidebar.markdown("---")
 
