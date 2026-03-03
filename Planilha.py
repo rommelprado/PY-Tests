@@ -466,8 +466,31 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     
     if not df_res.empty:
         
-        st.markdown("### Memória de Cálculo Parcelada")
-        st.table(df_res) 
+        # Converte para HTML puro
+        html_tabela = df_res.to_html(index=False, border=0)
+        
+        # Embuti o título DENTRO da tabela para ser inseparável na impressão
+        tag_tabela_nova = '''<table class="tabela-pdf">
+        <caption style="caption-side: top; text-align: left; font-size: 1.3em; font-weight: bold; margin-bottom: 15px; color: #1f2937;">
+            Memória de Cálculo Parcelada
+        </caption>'''
+        
+        html_tabela = html_tabela.replace('<table border="0" class="dataframe">', tag_tabela_nova)
+        
+        # Estilização visual para manter a elegância
+        bloco_html = f"""
+        <style>
+        .tabela-pdf {{ width: 100%; border-collapse: collapse; font-family: 'Source Sans Pro', sans-serif; font-size: 11px; margin-bottom: 20px; }}
+        .tabela-pdf th {{ background-color: #f0f2f6; border: 1px solid #dcdcdc; padding: 6px 4px; text-align: center; color: #1f2937; }}
+        .tabela-pdf td {{ border: 1px solid #dcdcdc; padding: 6px 4px; text-align: center; color: #1f2937; }}
+        @media print {{
+            .tabela-pdf {{ page-break-inside: auto; }}
+            .tabela-pdf tr {{ page-break-inside: avoid; page-break-after: auto; }}
+        }}
+        </style>
+        {html_tabela}
+        """
+        st.markdown(bloco_html, unsafe_allow_html=True)
         
         st.divider()
         st.markdown("### 🏛️ Resumo da Condenação a Executar")
