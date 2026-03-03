@@ -243,4 +243,242 @@ else:
             {"Mes": date(2024, 9, 1),  "IPCA (%)": 0.44, "Selic Meta (%)": 0.84},
             {"Mes": date(2024, 10, 1), "IPCA (%)": 0.56, "Selic Meta (%)": 0.93},
             {"Mes": date(2024, 11, 1), "IPCA (%)": 0.39, "Selic Meta (%)": 0.79},
-            {"Mes": date(2024, 12, 1), "IPCA (%)": 0.52, "Selic Meta (%)": 0
+            {"Mes": date(2024, 12, 1), "IPCA (%)": 0.52, "Selic Meta (%)": 0.93},
+            {"Mes": date(2025, 1, 1),  "IPCA (%)": 0.16, "Selic Meta (%)": 1.01},
+        ]
+        df_init = pd.DataFrame(dados_novos_init)
+        df_init["Mes"] = pd.to_datetime(df_init["Mes"])
+        df_novos_indices_input = st.data_editor(
+            df_init, num_rows="dynamic",
+            column_config={"Mes": st.column_config.DateColumn("Mês Ref.", format="MM/YYYY", step=1)},
+            use_container_width=True
+        )
+        df_novos_indices_input['periodo'] = df_novos_indices_input['Mes'].dt.to_period('M')
+
+def calcular_fator_ipca_pos(data_inicio_novo, data_fim_calculo):
+    p_ini = pd.to_datetime(data_inicio_novo).to_period('M')
+    p_fim = pd.to_datetime(data_fim_calculo).to_period('M')
+    df_filtrado = df_novos_indices_input[(df_novos_indices_input['periodo'] >= p_ini) & (df_novos_indices_input['periodo'] <= p_fim)]
+    fator = 1.0
+    for idx, row in df_filtrado.iterrows():
+        fator *= (1 + row['IPCA (%)'] / 100)
+    return fator
+
+def calcular_juros_lei_nova_tabela(valor_corrigido_ipca, data_inicio_novo, data_fim_calculo):
+    p_ini = pd.to_datetime(data_inicio_novo).to_period('M')
+    p_fim = pd.to_datetime(data_fim_calculo).to_period('M')
+    df_filtrado = df_novos_indices_input[(df_novos_indices_input['periodo'] >= p_ini) & (df_novos_indices_input['periodo'] <= p_fim)]
+    
+    fator_selic_acumulado = 1.0
+    fator_ipca_acumulado = 1.0
+    for idx, row in df_filtrado.iterrows():
+        fator_selic_acumulado *= (1 + (row['Selic Meta (%)'] / 100))
+        fator_ipca_acumulado *= (1 + (row['IPCA (%)'] / 100))
+        
+    var_selic_pct = (fator_selic_acumulado - 1) * 100
+    var_ipca_pct = (fator_ipca_acumulado - 1) * 100
+    juros_acumulados_pct = max(0, var_selic_pct - var_ipca_pct)
+    
+    valor_juros_reais = valor_corrigido_ipca * (juros_acumulados_pct / 100)
+    return valor_juros_reais, var_selic_pct, var_ipca_pct, juros_acumulados_pct
+
+
+# --- PROCESSAMENTO PRINCIPAL ---
+if st.sidebar.button("Calcular Execução", type="primary"):
+    
+    st.markdown("### 📄 Parâmetros da Liquidação")
+    if nome_cliente: st.write(f"**Cliente:** {nome_cliente}")
+        
+    # Calculando parcela sem o arredondamento interno
+    parcela_revisada = calcular_pmt_mensal(valor_emprestimo, taxa_judicial_mensal, prazo_meses, antecipada=pagamento_antecipado)
+    diferenca_base = valor_parcela_real - parcela_revisada
+    
+    st.markdown(f"""
+    <div class="info-cabecalho">
+        <strong>Valor Financiado:</strong> {fmt_moeda(valor_emprestimo)} &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <strong>Prazo do Contrato:</strong> {prazo_meses} meses &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <strong>Data da Citação:</strong> {data_citacao.strftime('%d/%m/%Y')} &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <strong>Atualizado até:</strong> {data_calculo.strftime('%d/%m/%Y')}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    colA, colB, colC = st.columns(3)
+    colA.metric(f"Parcela do Contrato ({fmt_pct(taxa_contrato_mensal)} a.m.)", fmt_moeda(valor_parcela_real))
+    colB.metric(f"Parcela Judicial ({fmt_pct(taxa_judicial_mensal)} a.m.)", fmt_moeda(parcela_revisada))
+    colC.metric("Indébito Mensal (Diferença)", fmt_moeda(diferenca_base))
+    
+    st.divider()
+
+    # --- BLOCO: MEMÓRIA ANALÍTICA DA PARCELA ---
+    st.markdown("### 🧮 Memória Analítica da Parcela Revisada")
+    
+    i_dec = taxa_judicial_mensal / 100
+    
+    if pagamento_antecipado:
+        st.markdown("<div class='analitico-box'><strong>Demonstração da Tabela Price com Série Antecipada (1ª parcela paga no ato):</strong></div>", unsafe_allow_html=True)
+        st.latex(r"PMT_{judicial} = \frac{PV \times i}{[1 - (1+i)^{-n}] \times (1+i)}")
+        latex_eq = f"PMT_{{judicial}} = \\frac{{ {valor_emprestimo:.2f} \\times {i_dec:.6f} }}{{ [1 - (1 + {i_dec:.6f})^{{ -{prazo_meses} }}] \\times (1 + {i_dec:.6f}) }} = {parcela_revisada:.2f}"
+        st.latex(latex_eq)
+    else:
+        st.markdown("<div class='analitico-box'><strong>Demonstração da Tabela Price com Série Postecipada (Padrão):</strong></div>", unsafe_allow_html=True)
+        st.latex(r"PMT_{judicial} = \frac{PV \times i}{1 - (1+i)^{-n}}")
+        latex_eq = f"PMT_{{judicial}} = \\frac{{ {valor_emprestimo:.2f} \\times {i_dec:.6f} }}{{ 1 - (1 + {i_dec:.6f})^{{ -{prazo_meses} }} }} = {parcela_revisada:.2f}"
+        st.latex(latex_eq)
+        
+    st.markdown(f"""
+    * **PV (Valor Financiado Original):** {fmt_moeda(valor_emprestimo)}
+    * **i (Taxa Judicial Fixada):** {fmt_pct(taxa_judicial_mensal)} a.m. (Fator decimal: {i_dec:.6f})
+    * **n (Prazo total):** {prazo_meses} meses
+    """)
+    st.divider()
+    # ------------------------------------------------
+    
+    dados = []
+    totais = {"Principal": 0, "CM": 0, "Juros_1_pct": 0, "Juros_Selic": 0}
+
+    for i in range(1, prazo_meses + 1):
+        vencimento = data_inicio + relativedelta(months=(i-1))
+        if vencimento > data_calculo: break
+
+        dias_cm = (data_calculo - vencimento).days
+        info_tempo_cm = f"{dias_cm}d" if dias_cm > 0 else "0d"
+
+        if i in parcelas_excluidas:
+            dados.append({
+                "Nº": i, "Vencimento": vencimento.strftime("%d/%m/%Y"), "Original": "-", "Tempo CM (Dias)": "-", 
+                "Fator TJMG": "-", "Fator IPCA": "-", "Principal Atualizado": "-", "Taxa 1% (Dias)": "-", 
+                "Juros 1% a.m.": "-", "Taxa (Selic - IPCA)": "-", "Juros Lei 14.905": "-", "Total Devido": "-"
+            })
+            continue 
+            
+        dias_tjmg = 0
+        dias_ipca = 0
+        dias_antigos = 0
+        taxa_antiga_pct = 0.0
+        juros_antigo_val = 0.0
+        juros_novos_val = 0.0
+        info_mora_selic = "-"
+        
+        if vencimento <= DATA_CORTE:
+            fator_tjmg = calcular_fator_tjmg_parcial(vencimento, DATA_CORTE)
+            valor_em_agosto = diferenca_base * fator_tjmg
+            
+            if data_calculo <= DATA_CORTE:
+                dias_tjmg = (data_calculo - vencimento).days
+            else:
+                dias_tjmg = (DATA_CORTE - vencimento).days
+                dias_ipca = (data_calculo - DATA_CORTE).days 
+            
+            inicio_juros_antigo = max(vencimento, data_citacao)
+            if inicio_juros_antigo < DATA_CORTE:
+                dias_antigos = (DATA_CORTE - inicio_juros_antigo).days
+                taxa_antiga_pct = (dias_antigos / 30) * 1.0 
+                juros_antigo_val = valor_em_agosto * (taxa_antiga_pct / 100)
+                
+            saldo_principal_agosto = valor_em_agosto
+            
+            if data_calculo > DATA_CORTE:
+                if usar_fatores_exatos:
+                    fator_ipca = fator_ipca_exato
+                    valor_final_principal = saldo_principal_agosto * fator_ipca
+                    
+                    var_selic_pct = (fator_selic_exato - 1) * 100
+                    var_ipca_pct = (fator_ipca_exato - 1) * 100
+                    juros_acumulados_pct = max(0, var_selic_pct - var_ipca_pct)
+                    juros_novos_val = valor_final_principal * (juros_acumulados_pct / 100)
+                    info_mora_selic = f"{fmt_br(var_selic_pct)}% - {fmt_br(var_ipca_pct)}% = {fmt_br(juros_acumulados_pct)}%"
+                else:
+                    fator_ipca = calcular_fator_ipca_pos(date(2024, 9, 1), data_calculo)
+                    valor_final_principal = saldo_principal_agosto * fator_ipca
+                    juros_novos_val, v_selic, v_ipca, juros_acum = calcular_juros_lei_nova_tabela(valor_final_principal, date(2024, 9, 1), data_calculo)
+                    info_mora_selic = f"{fmt_br(v_selic)}% - {fmt_br(v_ipca)}% = {fmt_br(juros_acum)}%"
+            else:
+                valor_final_principal = saldo_principal_agosto
+                fator_ipca = 1.0
+        else:
+            fator_tjmg = 1.0
+            fator_ipca = fator_ipca_exato if usar_fatores_exatos else 1.0
+            valor_final_principal = diferenca_base * fator_ipca
+
+        total_linha = valor_final_principal + juros_antigo_val + juros_novos_val
+        
+        str_fator_tjmg = f"{fmt_br(fator_tjmg, 4)} ({dias_tjmg}d)" if dias_tjmg > 0 else "-"
+        str_fator_ipca = f"{fmt_br(fator_ipca, 4)}" if dias_ipca > 0 else "-"
+        info_mora_1 = f"{fmt_br(taxa_antiga_pct)}% ({dias_antigos}d)" if dias_antigos > 0 else "-"
+
+        dados.append({
+            "Nº": i, 
+            "Vencimento": vencimento.strftime("%d/%m/%Y"), 
+            "Original": fmt_moeda(diferenca_base), 
+            "Tempo CM (Dias)": info_tempo_cm, 
+            "Fator TJMG": str_fator_tjmg, 
+            "Fator IPCA": str_fator_ipca, 
+            "Principal Atualizado": fmt_moeda(valor_final_principal), 
+            "Taxa 1% (Dias)": info_mora_1, 
+            "Juros 1% a.m.": fmt_moeda(juros_antigo_val), 
+            "Taxa (Selic - IPCA)": info_mora_selic, 
+            "Juros Lei 14.905": fmt_moeda(juros_novos_val), 
+            "Total Devido": fmt_moeda(total_linha)
+        })
+        
+        totais["Principal"] += diferenca_base
+        totais["CM"] += (valor_final_principal - diferenca_base)
+        totais["Juros_1_pct"] += juros_antigo_val
+        totais["Juros_Selic"] += juros_novos_val
+
+    df_res = pd.DataFrame(dados)
+    
+    if not df_res.empty:
+        
+        # --- A MÁGICA DO HTML SEGURO ---
+        html_tabela = df_res.to_html(index=False)
+        
+        bloco_inquebravel = f"""
+        <div style="page-break-inside: avoid; width: 100%;">
+            <h3 style="font-family: 'Source Sans Pro', sans-serif; color: #1f2937; margin-bottom: 10px;">
+                Memória de Cálculo Parcelada
+            </h3>
+            <style>
+            .dataframe {{ width: 100%; border-collapse: collapse; font-family: 'Source Sans Pro', sans-serif; font-size: 11px; text-align: center; }}
+            .dataframe th {{ background-color: #f0f2f6; border: 1px solid #dcdcdc; padding: 6px; text-align: center; color: #1f2937; }}
+            .dataframe td {{ border: 1px solid #dcdcdc; padding: 4px; color: #1f2937; }}
+            </style>
+            {html_tabela}
+        </div>
+        """
+        st.markdown(bloco_inquebravel, unsafe_allow_html=True)
+        # -------------------------------
+        
+        st.divider()
+        st.markdown("### 🏛️ Resumo da Condenação a Executar")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Principal Original", fmt_moeda(totais['Principal']))
+        col2.metric("Correção (TJMG+IPCA)", fmt_moeda(totais['CM']))
+        col3.metric("Juros Mora (1% a.m.)", fmt_moeda(totais['Juros_1_pct']))
+        col4.metric("Juros (Selic - IPCA)", fmt_moeda(totais['Juros_Selic']))
+        
+        total_geral = totais['Principal'] + totais['CM'] + totais['Juros_1_pct'] + totais['Juros_Selic']
+        col5.metric("TOTAL FINAL", fmt_moeda(total_geral), delta="Crédito do Autor")
+        
+        st.divider()
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            csv = convert_df(df_res)
+            st.download_button("💾 Baixar Tabela (Excel/CSV)", csv, "calculo_judicial.csv", "text/csv", use_container_width=True)
+            
+        with col_btn2:
+            html_botao = """
+            <script>
+            function imprimir() { window.parent.print(); }
+            </script>
+            <style>
+            .btn-imprimir {
+                background-color: #2e7d32; color: white; border: none; padding: 0.5rem 1rem;
+                font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: bold;
+                text-align: center; width: 100%; font-family: 'Source Sans Pro', sans-serif; margin-top: 15px;
+            }
+            .btn-imprimir:hover { background-color: #1b5e20; }
+            </style>
+            <button onclick="imprimir()" class="btn-imprimir">🖨️ Imprimir Relatório (PDF)</button>
+            """
+            components.html(html_botao, height=70)
