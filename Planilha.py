@@ -131,6 +131,9 @@ st.markdown("""
 .info-cabecalho {
     background-color: #f8f9fa; border-left: 4px solid #1f77b4; padding: 15px; border-radius: 5px; margin-bottom: 20px;
 }
+.analitico-box {
+    background-color: #e3f2fd; border-left: 4px solid #1976d2; padding: 15px; border-radius: 5px; margin-bottom: 20px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -154,7 +157,6 @@ def fmt_pct(valor):
     if pd.isna(valor) or valor == "-": return "-"
     if isinstance(valor, str): return valor
     return f"{fmt_br(valor)}%"
-
 
 # --- PROCESSAMENTO DOS DADOS ANTIGOS ---
 @st.cache_data
@@ -226,6 +228,7 @@ if excluir_str:
     except:
         st.sidebar.error("Erro ao ler parcelas excluídas.")
 
+# DATA DE CORTE AJUSTADA PARA O ACÓRDÃO
 DATA_CORTE = date(2024, 8, 28) 
 
 st.sidebar.markdown("---")
@@ -236,7 +239,8 @@ usar_fatores_exatos = st.sidebar.checkbox("Substituir tabela por Fator Exato do 
 
 if usar_fatores_exatos:
     fator_selic_exato = st.sidebar.number_input("Fator Selic Acumulado (Ex: 1.20916309)", value=1.20916309, format="%.8f")
-    fator_ipca_exato = st.sidebar.number_input("Fator IPCA Acumulado (Ex: 1.0662)", value=1.0662, format="%.4f")
+    # Agora a caixa do IPCA aceita até 8 decimais
+    fator_ipca_exato = st.sidebar.number_input("Fator IPCA Acumulado (Ex: 1.0662...)", value=1.06620000, format="%.8f")
 else:
     with st.sidebar.expander("Tabela Mensal (Aproximada)"):
         st.info("Para maior precisão, ative os Fatores Exatos acima.")
@@ -320,6 +324,34 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     colC.metric("Indébito Mensal (Diferença)", fmt_moeda(diferenca_base))
     
     st.divider()
+
+    # --- NOVO BLOCO: MEMÓRIA ANALÍTICA DA PARCELA ---
+    st.markdown("### 🧮 Memória Analítica da Parcela Revisada")
+    
+    i_dec = taxa_judicial_mensal / 100
+    
+    if pagamento_antecipado:
+        st.markdown("<div class='analitico-box'><strong>Demonstração da Tabela Price com Série Antecipada (1ª parcela paga no ato):</strong></div>", unsafe_allow_html=True)
+        # Fórmula base
+        st.latex(r"PMT_{judicial} = \frac{PV \times i}{[1 - (1+i)^{-n}] \times (1+i)}")
+        # Fórmula com valores
+        latex_eq = f"PMT_{{judicial}} = \\frac{{{valor_emprestimo:.2f} \\times {i_dec:.6f}}}{{[1 - (1 + {i_dec:.6f})^{{-{prazo_meses}}}]} \\times (1 + {i_dec:.6f})} = {parcela_revisada:.2f}"
+        st.latex(latex_eq)
+    else:
+        st.markdown("<div class='analitico-box'><strong>Demonstração da Tabela Price com Série Postecipada (Padrão):</strong></div>", unsafe_allow_html=True)
+        # Fórmula base
+        st.latex(r"PMT_{judicial} = \frac{PV \times i}{1 - (1+i)^{-n}}")
+        # Fórmula com valores
+        latex_eq = f"PMT_{{judicial}} = \\frac{{{valor_emprestimo:.2f} \\times {i_dec:.6f}}}{{1 - (1 + {i_dec:.6f})^{{-{prazo_meses}}}}} = {parcela_revisada:.2f}"
+        st.latex(latex_eq)
+        
+    st.markdown(f"""
+    * **PV (Valor Financiado Original):** {fmt_moeda(valor_emprestimo)}
+    * **i (Taxa Judicial Fixada):** {fmt_pct(taxa_judicial_mensal)} a.m. (Fator decimal: {i_dec:.6f})
+    * **n (Prazo total):** {prazo_meses} meses
+    """)
+    st.divider()
+    # ------------------------------------------------
     
     dados = []
     totais = {"Principal": 0, "CM": 0, "Juros_1_pct": 0, "Juros_Selic": 0}
@@ -347,7 +379,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         juros_novos_val = 0.0
         info_mora_selic = "-"
         
-        # ETAPA 1: ATÉ 29/08/2024
+        # ETAPA 1: ATÉ 28/08/2024
         if vencimento <= DATA_CORTE:
             fator_tjmg = calcular_fator_tjmg_parcial(vencimento, DATA_CORTE)
             valor_em_agosto = diferenca_base * fator_tjmg
