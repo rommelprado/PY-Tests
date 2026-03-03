@@ -325,7 +325,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     
     st.divider()
 
-    # --- NOVO BLOCO: MEMÓRIA ANALÍTICA DA PARCELA ---
+  # --- NOVO BLOCO: MEMÓRIA ANALÍTICA DA PARCELA ---
     st.markdown("### 🧮 Memória Analítica da Parcela Revisada")
     
     i_dec = taxa_judicial_mensal / 100
@@ -334,15 +334,15 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         st.markdown("<div class='analitico-box'><strong>Demonstração da Tabela Price com Série Antecipada (1ª parcela paga no ato):</strong></div>", unsafe_allow_html=True)
         # Fórmula base
         st.latex(r"PMT_{judicial} = \frac{PV \times i}{[1 - (1+i)^{-n}] \times (1+i)}")
-        # Fórmula com valores
-        latex_eq = f"PMT_{{judicial}} = \\frac{{{valor_emprestimo:.2f} \\times {i_dec:.6f}}}{{[1 - (1 + {i_dec:.6f})^{{-{prazo_meses}}}]} \\times (1 + {i_dec:.6f})} = {parcela_revisada:.2f}"
+        # Fórmula com valores (Corrigido os escapes de chaves)
+        latex_eq = f"PMT_{{judicial}} = \\frac{{ {valor_emprestimo:.2f} \\times {i_dec:.6f} }}{{ [1 - (1 + {i_dec:.6f})^{{ -{prazo_meses} }}] \\times (1 + {i_dec:.6f}) }} = {parcela_revisada:.2f}"
         st.latex(latex_eq)
     else:
         st.markdown("<div class='analitico-box'><strong>Demonstração da Tabela Price com Série Postecipada (Padrão):</strong></div>", unsafe_allow_html=True)
         # Fórmula base
         st.latex(r"PMT_{judicial} = \frac{PV \times i}{1 - (1+i)^{-n}}")
-        # Fórmula com valores
-        latex_eq = f"PMT_{{judicial}} = \\frac{{{valor_emprestimo:.2f} \\times {i_dec:.6f}}}{{1 - (1 + {i_dec:.6f})^{{-{prazo_meses}}}}} = {parcela_revisada:.2f}"
+        # Fórmula com valores (Corrigido os escapes de chaves)
+        latex_eq = f"PMT_{{judicial}} = \\frac{{ {valor_emprestimo:.2f} \\times {i_dec:.6f} }}{{ 1 - (1 + {i_dec:.6f})^{{ -{prazo_meses} }} }} = {parcela_revisada:.2f}"
         st.latex(latex_eq)
         
     st.markdown(f"""
