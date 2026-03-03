@@ -453,6 +453,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     df_res = pd.DataFrame(dados)
     
     if not df_res.empty:
+        
         st.markdown("### Memória de Cálculo Parcelada")
         st.table(df_res) 
         
