@@ -125,8 +125,20 @@ st.markdown("""
     footer { display: none !important; }
     .stButton, .btn-imprimir, .stDownloadButton { display: none !important; }
     .block-container { padding-top: 0px !important; margin-top: 0px !important; }
+    
+    /* Configuração da Tabela e Quebra de Página */
     table { font-size: 10px !important; page-break-inside: auto; }
     tr { page-break-inside: avoid; page-break-after: auto; }
+    
+    /* A trava para o título não ficar órfão na página anterior */
+    h1, h2, h3, h4, h5, h6 { 
+        page-break-after: avoid !important; 
+        break-after: avoid !important; 
+    }
+    div[data-testid="stMarkdownContainer"] > p {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+    }
 }
 .info-cabecalho {
     background-color: #f8f9fa; border-left: 4px solid #1f77b4; padding: 15px; border-radius: 5px; margin-bottom: 20px;
