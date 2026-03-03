@@ -125,20 +125,8 @@ st.markdown("""
     footer { display: none !important; }
     .stButton, .btn-imprimir, .stDownloadButton { display: none !important; }
     .block-container { padding-top: 0px !important; margin-top: 0px !important; }
-    
-    /* Configuração da Tabela e Quebra de Página */
     table { font-size: 10px !important; page-break-inside: auto; }
     tr { page-break-inside: avoid; page-break-after: auto; }
-    
-    /* A trava para o título não ficar órfão na página anterior */
-    h1, h2, h3, h4, h5, h6 { 
-        page-break-after: avoid !important; 
-        break-after: avoid !important; 
-    }
-    div[data-testid="stMarkdownContainer"] > p {
-        page-break-after: avoid !important;
-        break-after: avoid !important;
-    }
 }
 .info-cabecalho {
     background-color: #f8f9fa; border-left: 4px solid #1f77b4; padding: 15px; border-radius: 5px; margin-bottom: 20px;
@@ -337,7 +325,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     
     st.divider()
 
-    # --- NOVO BLOCO: MEMÓRIA ANALÍTICA DA PARCELA ---
+   # --- NOVO BLOCO: MEMÓRIA ANALÍTICA DA PARCELA ---
     st.markdown("### 🧮 Memória Analítica da Parcela Revisada")
     
     i_dec = taxa_judicial_mensal / 100
@@ -465,25 +453,8 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     df_res = pd.DataFrame(dados)
     
     if not df_res.empty:
-        
-        # Gera o HTML da tabela de forma segura
-        html_tabela = df_res.to_html(index=False, classes="tabela-pdf", justify="center")
-        
-        # Cria um bloco único (div) blindado contra quebra de página
-        bloco_html = f"""
-        <div style="page-break-inside: avoid; page-break-after: auto; margin-top: 20px;">
-            <h3 style="font-family: 'Source Sans Pro', sans-serif; color: #1f2937; margin-bottom: 15px; font-weight: 600;">
-                Memória de Cálculo Parcelada
-            </h3>
-            <style>
-            .tabela-pdf {{ width: 100%; border-collapse: collapse; font-family: 'Source Sans Pro', sans-serif; font-size: 11px; margin-bottom: 20px; }}
-            .tabela-pdf th {{ background-color: #f0f2f6; border: 1px solid #dcdcdc; padding: 6px 4px; text-align: center; color: #1f2937; font-weight: bold; }}
-            .tabela-pdf td {{ border: 1px solid #dcdcdc; padding: 6px 4px; text-align: center; color: #1f2937; }}
-            </style>
-            {html_tabela}
-        </div>
-        """
-        st.markdown(bloco_html, unsafe_allow_html=True)
+        st.markdown("### Memória de Cálculo Parcelada")
+        st.table(df_res) 
         
         st.divider()
         st.markdown("### 🏛️ Resumo da Condenação a Executar")
