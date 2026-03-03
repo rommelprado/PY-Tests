@@ -466,29 +466,22 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     
     if not df_res.empty:
         
-        # Converte para HTML puro
-        html_tabela = df_res.to_html(index=False, border=0)
+        # Gera o HTML da tabela de forma segura
+        html_tabela = df_res.to_html(index=False, classes="tabela-pdf", justify="center")
         
-        # Embuti o título DENTRO da tabela para ser inseparável na impressão
-        tag_tabela_nova = '''<table class="tabela-pdf">
-        <caption style="caption-side: top; text-align: left; font-size: 1.3em; font-weight: bold; margin-bottom: 15px; color: #1f2937;">
-            Memória de Cálculo Parcelada
-        </caption>'''
-        
-        html_tabela = html_tabela.replace('<table border="0" class="dataframe">', tag_tabela_nova)
-        
-        # Estilização visual para manter a elegância
+        # Cria um bloco único (div) blindado contra quebra de página
         bloco_html = f"""
-        <style>
-        .tabela-pdf {{ width: 100%; border-collapse: collapse; font-family: 'Source Sans Pro', sans-serif; font-size: 11px; margin-bottom: 20px; }}
-        .tabela-pdf th {{ background-color: #f0f2f6; border: 1px solid #dcdcdc; padding: 6px 4px; text-align: center; color: #1f2937; }}
-        .tabela-pdf td {{ border: 1px solid #dcdcdc; padding: 6px 4px; text-align: center; color: #1f2937; }}
-        @media print {{
-            .tabela-pdf {{ page-break-inside: auto; }}
-            .tabela-pdf tr {{ page-break-inside: avoid; page-break-after: auto; }}
-        }}
-        </style>
-        {html_tabela}
+        <div style="page-break-inside: avoid; page-break-after: auto; margin-top: 20px;">
+            <h3 style="font-family: 'Source Sans Pro', sans-serif; color: #1f2937; margin-bottom: 15px; font-weight: 600;">
+                Memória de Cálculo Parcelada
+            </h3>
+            <style>
+            .tabela-pdf {{ width: 100%; border-collapse: collapse; font-family: 'Source Sans Pro', sans-serif; font-size: 11px; margin-bottom: 20px; }}
+            .tabela-pdf th {{ background-color: #f0f2f6; border: 1px solid #dcdcdc; padding: 6px 4px; text-align: center; color: #1f2937; font-weight: bold; }}
+            .tabela-pdf td {{ border: 1px solid #dcdcdc; padding: 6px 4px; text-align: center; color: #1f2937; }}
+            </style>
+            {html_tabela}
+        </div>
         """
         st.markdown(bloco_html, unsafe_allow_html=True)
         
