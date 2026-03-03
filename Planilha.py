@@ -177,13 +177,18 @@ def calcular_fator_tjmg_parcial(data_venc, data_corte_limite):
     if df_tjmg.empty: return 1.0
     p_venc = pd.to_datetime(data_venc).to_period('M')
     p_corte = pd.to_datetime(data_corte_limite).to_period('M')
+    
     if p_venc > p_corte: return 1.0
+        
     linha_corte = df_tjmg[df_tjmg['periodo'] == p_corte]
     fator_fim = linha_corte['Fator_Acumulado'].iloc[0] if not linha_corte.empty else 1.0
+        
     linha_venc = df_tjmg[df_tjmg['periodo'] == p_venc]
     fator_inicio = linha_venc['Fator_Acumulado'].iloc[0] if not linha_venc.empty else 1.0
+        
     return fator_inicio / fator_fim
 
+# --- FUNÇÕES FINANCEIRAS BÁSICAS ---
 def calcular_pmt_mensal(principal, taxa_mensal_pct, meses, antecipada=False):
     taxa = taxa_mensal_pct / 100
     if taxa == 0: return principal / meses
@@ -223,15 +228,18 @@ if excluir_str:
     except:
         st.sidebar.error("Erro ao ler parcelas excluídas.")
 
+# DATA DE CORTE AJUSTADA PARA O ACÓRDÃO
 DATA_CORTE = date(2024, 8, 28) 
 
 st.sidebar.markdown("---")
 
+# --- ABA DE ÍNDICES EXATOS (OVERRIDE BACEN) ---
 st.sidebar.header("🎯 Índices Pós-Lei Exatos (Opcional)")
 usar_fatores_exatos = st.sidebar.checkbox("Substituir tabela por Fator Exato do Bacen/IBGE", value=False)
 
 if usar_fatores_exatos:
     fator_selic_exato = st.sidebar.number_input("Fator Selic Acumulado (Ex: 1.20916309)", value=1.20916309, format="%.8f")
+    # Agora a caixa do IPCA aceita até 8 decimais
     fator_ipca_exato = st.sidebar.number_input("Fator IPCA Acumulado (Ex: 1.0662...)", value=1.06620000, format="%.8f")
 else:
     with st.sidebar.expander("Tabela Mensal (Aproximada)"):
@@ -242,6 +250,18 @@ else:
             {"Mes": date(2024, 11, 1), "IPCA (%)": 0.39, "Selic Meta (%)": 0.79},
             {"Mes": date(2024, 12, 1), "IPCA (%)": 0.52, "Selic Meta (%)": 0.93},
             {"Mes": date(2025, 1, 1),  "IPCA (%)": 0.16, "Selic Meta (%)": 1.01},
+            {"Mes": date(2025, 2, 1),  "IPCA (%)": 1.31, "Selic Meta (%)": 0.99},
+            {"Mes": date(2025, 3, 1),  "IPCA (%)": 0.56, "Selic Meta (%)": 0.96},
+            {"Mes": date(2025, 4, 1),  "IPCA (%)": 0.43, "Selic Meta (%)": 1.06},
+            {"Mes": date(2025, 5, 1),  "IPCA (%)": 0.26, "Selic Meta (%)": 1.14},
+            {"Mes": date(2025, 6, 1),  "IPCA (%)": 0.24, "Selic Meta (%)": 1.10},
+            {"Mes": date(2025, 7, 1),  "IPCA (%)": 0.26, "Selic Meta (%)": 1.28},
+            {"Mes": date(2025, 8, 1),  "IPCA (%)": -0.11,"Selic Meta (%)": 1.16},
+            {"Mes": date(2025, 9, 1),  "IPCA (%)": 0.48, "Selic Meta (%)": 1.22},
+            {"Mes": date(2025, 10, 1), "IPCA (%)": 0.09, "Selic Meta (%)": 1.28},
+            {"Mes": date(2025, 11, 1), "IPCA (%)": 0.18, "Selic Meta (%)": 1.05},
+            {"Mes": date(2025, 12, 1), "IPCA (%)": 0.33, "Selic Meta (%)": 1.22},
+            {"Mes": date(2026, 1, 1),  "IPCA (%)": 0.33, "Selic Meta (%)": 1.16},
         ]
         df_init = pd.DataFrame(dados_novos_init)
         df_init["Mes"] = pd.to_datetime(df_init["Mes"])
@@ -276,8 +296,7 @@ def calcular_juros_lei_nova_tabela(valor_corrigido_ipca, data_inicio_novo, data_
     var_ipca_pct = (fator_ipca_acumulado - 1) * 100
     juros_acumulados_pct = max(0, var_selic_pct - var_ipca_pct)
     
-    # Aplicando o round contábil logo no cálculo do Juro Novo da tabela
-    valor_juros_reais = round(valor_corrigido_ipca * (juros_acumulados_pct / 100), 2)
+    valor_juros_reais = valor_corrigido_ipca * (juros_acumulados_pct / 100)
     return valor_juros_reais, var_selic_pct, var_ipca_pct, juros_acumulados_pct
 
 
@@ -287,11 +306,6 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     st.markdown("### 📄 Parâmetros da Liquidação")
     if nome_cliente: st.write(f"**Cliente:** {nome_cliente}")
         
-    # Arredondamento contábil imediato nas variáveis base
-    parcela_revisada_crua = calcular_pmt_mensal(valor_emprestimo, taxa_judicial_mensal, prazo_meses, antecipada=pagamento_antecipado)
-    parcela_revisada = round(parcela_revisada_crua, 2)
-    diferenca_base = round(valor_parcela_real - parcela_revisada, 2)
-    
     st.markdown(f"""
     <div class="info-cabecalho">
         <strong>Valor Financiado:</strong> {fmt_moeda(valor_emprestimo)} &nbsp;&nbsp;|&nbsp;&nbsp; 
@@ -300,6 +314,9 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         <strong>Atualizado até:</strong> {data_calculo.strftime('%d/%m/%Y')}
     </div>
     """, unsafe_allow_html=True)
+        
+    parcela_revisada = calcular_pmt_mensal(valor_emprestimo, taxa_judicial_mensal, prazo_meses, antecipada=pagamento_antecipado)
+    diferenca_base = valor_parcela_real - parcela_revisada
     
     colA, colB, colC = st.columns(3)
     colA.metric(f"Parcela do Contrato ({fmt_pct(taxa_contrato_mensal)} a.m.)", fmt_moeda(valor_parcela_real))
@@ -308,19 +325,23 @@ if st.sidebar.button("Calcular Execução", type="primary"):
     
     st.divider()
 
-    # --- BLOCO: MEMÓRIA ANALÍTICA DA PARCELA ---
+    # --- NOVO BLOCO: MEMÓRIA ANALÍTICA DA PARCELA ---
     st.markdown("### 🧮 Memória Analítica da Parcela Revisada")
     
     i_dec = taxa_judicial_mensal / 100
     
     if pagamento_antecipado:
         st.markdown("<div class='analitico-box'><strong>Demonstração da Tabela Price com Série Antecipada (1ª parcela paga no ato):</strong></div>", unsafe_allow_html=True)
+        # Fórmula base
         st.latex(r"PMT_{judicial} = \frac{PV \times i}{[1 - (1+i)^{-n}] \times (1+i)}")
+        # Fórmula com valores (Corrigido os escapes de chaves)
         latex_eq = f"PMT_{{judicial}} = \\frac{{ {valor_emprestimo:.2f} \\times {i_dec:.6f} }}{{ [1 - (1 + {i_dec:.6f})^{{ -{prazo_meses} }}] \\times (1 + {i_dec:.6f}) }} = {parcela_revisada:.2f}"
         st.latex(latex_eq)
     else:
         st.markdown("<div class='analitico-box'><strong>Demonstração da Tabela Price com Série Postecipada (Padrão):</strong></div>", unsafe_allow_html=True)
+        # Fórmula base
         st.latex(r"PMT_{judicial} = \frac{PV \times i}{1 - (1+i)^{-n}}")
+        # Fórmula com valores (Corrigido os escapes de chaves)
         latex_eq = f"PMT_{{judicial}} = \\frac{{ {valor_emprestimo:.2f} \\times {i_dec:.6f} }}{{ 1 - (1 + {i_dec:.6f})^{{ -{prazo_meses} }} }} = {parcela_revisada:.2f}"
         st.latex(latex_eq)
         
@@ -361,8 +382,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         # ETAPA 1: ATÉ 28/08/2024
         if vencimento <= DATA_CORTE:
             fator_tjmg = calcular_fator_tjmg_parcial(vencimento, DATA_CORTE)
-            # TRAVA CONTÁBIL 1: Principal corrigido até Ago/24
-            valor_em_agosto = round(diferenca_base * fator_tjmg, 2)
+            valor_em_agosto = diferenca_base * fator_tjmg
             
             if data_calculo <= DATA_CORTE:
                 dias_tjmg = (data_calculo - vencimento).days
@@ -374,8 +394,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             if inicio_juros_antigo < DATA_CORTE:
                 dias_antigos = (DATA_CORTE - inicio_juros_antigo).days
                 taxa_antiga_pct = (dias_antigos / 30) * 1.0 
-                # TRAVA CONTÁBIL 2: Juros de 1% a.m.
-                juros_antigo_val = round(valor_em_agosto * (taxa_antiga_pct / 100), 2)
+                juros_antigo_val = valor_em_agosto * (taxa_antiga_pct / 100)
                 
             saldo_principal_agosto = valor_em_agosto
             
@@ -383,21 +402,17 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             if data_calculo > DATA_CORTE:
                 if usar_fatores_exatos:
                     fator_ipca = fator_ipca_exato
-                    # TRAVA CONTÁBIL 3: Principal Atualizado Final
-                    valor_final_principal = round(saldo_principal_agosto * fator_ipca, 2)
+                    valor_final_principal = saldo_principal_agosto * fator_ipca
                     
                     var_selic_pct = (fator_selic_exato - 1) * 100
                     var_ipca_pct = (fator_ipca_exato - 1) * 100
                     juros_acumulados_pct = max(0, var_selic_pct - var_ipca_pct)
-                    # TRAVA CONTÁBIL 4: Juros Selic
-                    juros_novos_val = round(valor_final_principal * (juros_acumulados_pct / 100), 2)
+                    juros_novos_val = valor_final_principal * (juros_acumulados_pct / 100)
                     info_mora_selic = f"{fmt_br(var_selic_pct)}% - {fmt_br(var_ipca_pct)}% = {fmt_br(juros_acumulados_pct)}%"
                 else:
                     fator_ipca = calcular_fator_ipca_pos(date(2024, 9, 1), data_calculo)
-                    # TRAVA CONTÁBIL 3 (Tabela): Principal Atualizado Final
-                    valor_final_principal = round(saldo_principal_agosto * fator_ipca, 2)
+                    valor_final_principal = saldo_principal_agosto * fator_ipca
                     
-                    # TRAVA CONTÁBIL 4 (Tabela): A função já retorna o valor arredondado
                     juros_novos_val, v_selic, v_ipca, juros_acum = calcular_juros_lei_nova_tabela(valor_final_principal, date(2024, 9, 1), data_calculo)
                     info_mora_selic = f"{fmt_br(v_selic)}% - {fmt_br(v_ipca)}% = {fmt_br(juros_acum)}%"
             else:
@@ -407,10 +422,9 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             # Parcela 100% Pós-Lei
             fator_tjmg = 1.0
             fator_ipca = fator_ipca_exato if usar_fatores_exatos else 1.0
-            valor_final_principal = round(diferenca_base * fator_ipca, 2)
+            valor_final_principal = diferenca_base * fator_ipca
 
-        # TRAVA CONTÁBIL 5: Soma Total da Linha
-        total_linha = round(valor_final_principal + juros_antigo_val + juros_novos_val, 2)
+        total_linha = valor_final_principal + juros_antigo_val + juros_novos_val
         
         str_fator_tjmg = f"{fmt_br(fator_tjmg, 4)} ({dias_tjmg}d)" if dias_tjmg > 0 else "-"
         str_fator_ipca = f"{fmt_br(fator_ipca, 4)}" if dias_ipca > 0 else "-"
@@ -431,10 +445,10 @@ if st.sidebar.button("Calcular Execução", type="primary"):
             "Total Devido": fmt_moeda(total_linha)
         })
         
-        totais["Principal"] = round(totais["Principal"] + diferenca_base, 2)
-        totais["CM"] = round(totais["CM"] + (valor_final_principal - diferenca_base), 2)
-        totais["Juros_1_pct"] = round(totais["Juros_1_pct"] + juros_antigo_val, 2)
-        totais["Juros_Selic"] = round(totais["Juros_Selic"] + juros_novos_val, 2)
+        totais["Principal"] += diferenca_base
+        totais["CM"] += (valor_final_principal - diferenca_base)
+        totais["Juros_1_pct"] += juros_antigo_val
+        totais["Juros_Selic"] += juros_novos_val
 
     df_res = pd.DataFrame(dados)
     
@@ -450,7 +464,7 @@ if st.sidebar.button("Calcular Execução", type="primary"):
         col3.metric("Juros Mora (1% a.m.)", fmt_moeda(totais['Juros_1_pct']))
         col4.metric("Juros (Selic - IPCA)", fmt_moeda(totais['Juros_Selic']))
         
-        total_geral = round(totais['Principal'] + totais['CM'] + totais['Juros_1_pct'] + totais['Juros_Selic'], 2)
+        total_geral = totais['Principal'] + totais['CM'] + totais['Juros_1_pct'] + totais['Juros_Selic']
         col5.metric("TOTAL FINAL", fmt_moeda(total_geral), delta="Crédito do Autor")
         
         st.divider()
